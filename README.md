@@ -52,10 +52,7 @@ IAnus/
         ├── asignaturas_GIDI.csv
         ├── Iniciar Horarios GIDI.command
         ├── Iniciar Horarios GIDI.sh
-        ├── Iniciar Horarios GIDI.bat
-        ├── Iniciar Editor GIDI.command
-        ├── Iniciar Editor GIDI.sh
-        └── Iniciar Editor GIDI.bat
+        └── Iniciar Horarios GIDI.bat
 ```
 
 ---
