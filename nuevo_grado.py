@@ -1207,8 +1207,8 @@ def build_config(data):
         'institution': {
             'name':     b.get('institucion', ''),
             'acronym':  b.get('siglas_inst', ''),
-            'logo_png': '../../docs/logo_upct.png',
-            'logo_pdf': '../../docs/logo.pdf'
+            'logo_png': 'docs/logo_upct.png',
+            'logo_pdf': 'docs/logo.pdf'
         },
         'degree': {
             'name':    b.get('nombre', ''),
@@ -1281,7 +1281,7 @@ cleanup() {{
 }}
 trap cleanup EXIT INT TERM
 
-DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" \\
+DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" \\
   --grado "grados/{siglas}" &
 SERVER_PID=$!
@@ -1306,6 +1306,7 @@ copy /Y "%DB_SRC%" "%DB_TMP%" >nul 2>&1
 
 set DB_PATH_OVERRIDE=%DB_TMP%
 set CURSO_LABEL={curso_label}
+set CONFIG_PATH_OVERRIDE=%DIR%
 start "" "http://localhost:{port}"
 python "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
 
@@ -1332,7 +1333,7 @@ cleanup() {{
 }}
 trap cleanup EXIT INT TERM
 
-DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" \\
+DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" --grado "grados/{siglas}" &
 SERVER_PID=$!
 
@@ -1490,7 +1491,7 @@ class WizardHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml')
             self.send_header('Content-Length', len(data))
-            self.send_header('Cache-Control', 'public, max-age=86400')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
             self.end_headers()
             self.wfile.write(data)
         except FileNotFoundError:

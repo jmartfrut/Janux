@@ -937,11 +937,23 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
                 pass
         if not os.path.exists(logo_png):
             self.send_response(404); self.end_headers(); return
-        data = open(logo_png, 'rb').read()
+        # Convertir a RGB con fondo blanco para máxima compatibilidad con jsPDF
+        # (evita problemas con PNGs RGBA / canal alfa)
+        try:
+            from PIL import Image as _PIL_Image
+            import io as _io
+            img = _PIL_Image.open(logo_png).convert('RGBA')
+            bg = _PIL_Image.new('RGB', img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3])
+            buf = _io.BytesIO()
+            bg.save(buf, format='PNG', optimize=False)
+            data = buf.getvalue()
+        except Exception:
+            data = open(logo_png, 'rb').read()
         self.send_response(200)
         self.send_header('Content-Type', 'image/png')
         self.send_header('Content-Length', len(data))
-        self.send_header('Cache-Control', 'public, max-age=86400')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(data)
@@ -955,7 +967,7 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'image/svg+xml')
         self.send_header('Content-Length', len(data))
-        self.send_header('Cache-Control', 'public, max-age=86400')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(data)
@@ -2104,7 +2116,7 @@ function getActType(cls) {
   const a = (cls.aula || '').trim();
   if (a === 'LAB') return 'lab';
   if (a === 'INFO' || a === 'Aula:') return 'info';
-  if (a !== '') return 'ps';
+  // Cualquier otra etiqueta de aula (PS6, PB2, PS13, etc.) se computa como AF1
   return 'teoria';
 }
 
@@ -3740,12 +3752,12 @@ function getPrintInfo() {
 
 // ─── PDF GENERATION (html2canvas + jsPDF, sin diálogo de impresora) ───
 
-// Carga el logo UPCT como data-URL (resultado cacheado)
+// Carga el logo UPCT como data-URL (sin caché para reflejar cambios al instante)
 let _logoDataUrl = null;
 async function _loadLogo() {
   if (_logoDataUrl !== null) return _logoDataUrl;
   try {
-    const resp = await fetch('/api/logo');
+    const resp = await fetch('/api/logo?t=' + Date.now());
     if (!resp.ok) { _logoDataUrl = ''; return ''; }
     const blob = await resp.blob();
     _logoDataUrl = await new Promise(resolve => {

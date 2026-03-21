@@ -34,20 +34,23 @@ IAnus/
 ├── importar_horarios.py       # Importación de horarios desde Excel
 ├── exportar_excel.py          # Exportación a Excel
 ├── exportar_finales_pdf.py    # Exportación de exámenes finales a PDF
-├── Crear Nuevo Grado.command  # Lanzador macOS para crear un grado
-├── Crear Nuevo Grado.sh       # Lanzador Linux para crear un grado
-├── Crear Nuevo Grado.bat      # Lanzador Windows para crear un grado
-├── HORARIOS/                  # Ficheros fuente de horarios (Excel y PDF por grado)
+├── Grado.command              # Lanzador macOS para crear un grado
+├── Grado.sh                   # Lanzador Linux para crear un grado
+├── Grado.bat                  # Lanzador Windows para crear un grado
+├── CLAUDE.md                  # Instrucciones para el asistente IA
+├── TECHNICAL.md               # Documentación técnica detallada
 ├── docs/
-│   ├── logo_ianus.svg
-│   ├── logo_thumb.png
-│   ├── logo_upct.png
-│   └── logo.pdf
+│   ├── logo_ianus.svg         # Logo IAnus (interfaz web)
+│   ├── logo.svg               # Logo institucional (SVG)
+│   ├── logo.pdf               # Logo institucional (PDF, fuente)
+│   ├── logo.png               # Logo institucional (PNG, generado)
+│   └── logo_upct.png          # Logo institucional alta resolución (generado)
 └── grados/                    # ⚠️ No versionado — generado localmente por cada instalación
     └── <NOMBRE_GRADO>/
         ├── config.json
         ├── horarios.db
         ├── fichas.pdf
+        ├── HORARIOS/          # Ficheros fuente de horarios (Excel y PDF)
         ├── Iniciar Horarios <GRADO>.command   # macOS
         ├── Iniciar Horarios <GRADO>.sh        # Linux
         └── Iniciar Horarios <GRADO>.bat       # Windows

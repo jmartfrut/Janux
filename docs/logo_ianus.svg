@@ -12,53 +12,52 @@
 
   <rect width="520" height="520" rx="80" ry="80" fill="url(#bg)"/>
 
-  <!-- Versión minimalista moderna — pocos bloques, mucho espacio, tipografía grande -->
-  <!-- Bloques grandes con fuerte presencia -->
+  <!-- Bloque azul eléctrico grande arriba izquierda -->
+  <rect x="44"  y="44"  width="110" height="76" rx="16" fill="#2855a0" opacity="0.90" transform="rotate(-4, 99, 82)"/>
+  <!-- Bloque dorado/naranja mediano, solapado -->
+  <rect x="130" y="64"  width="68"  height="68"  rx="14" fill="#e8a020" opacity="0.95"  transform="rotate(3, 164, 98)"/>
+  <!-- Bloque verde menta pequeño -->
+  <rect x="210" y="50"  width="46"  height="46"  rx="10" fill="#27ae60" opacity="0.80" transform="rotate(-2, 233, 73)"/>
 
-  <!-- Bloque azul grande arriba izquierda -->
-  <rect x="44"  y="44"  width="110" height="76" rx="16" fill="#2855a0" opacity="0.85" transform="rotate(-4, 99, 82)"/>
-  <!-- Bloque dorado mediano, solapado -->
-  <rect x="130" y="64"  width="68"  height="68"  rx="14" fill="#e8a020" opacity="0.9"  transform="rotate(3, 164, 98)"/>
-  <!-- Bloque ghost pequeño -->
-  <rect x="210" y="50"  width="46"  height="46"  rx="10" fill="rgba(255,255,255,0.06)" transform="rotate(-2, 233, 73)"/>
+  <!-- Bloque cian/aguamarina flotante -->
+  <rect x="294" y="42"  width="80"  height="56"  rx="14" fill="#00b4d8" opacity="0.75"  transform="rotate(4, 334, 70)"/>
+  <!-- Bloque coral/rojo pequeño esquina derecha -->
+  <rect x="388" y="58"  width="52"  height="52"  rx="12" fill="#e05c3a" opacity="0.85" transform="rotate(-5, 414, 84)"/>
 
-  <!-- Bloque azul claro flotante -->
-  <rect x="294" y="42"  width="80"  height="56"  rx="14" fill="#3a7bd5" opacity="0.6"  transform="rotate(4, 334, 70)"/>
-  <!-- Bloque dorado pequeño esquina derecha -->
-  <rect x="388" y="58"  width="52"  height="52"  rx="12" fill="#e8a020" opacity="0.75" transform="rotate(-5, 414, 84)"/>
+  <!-- Bloque morado grande central izquierda -->
+  <rect x="36"  y="148" width="86"  height="96"  rx="16" fill="#7b2d8b" opacity="0.85"  transform="rotate(3, 79, 196)"/>
+  <!-- Bloque verde lima junto -->
+  <rect x="132" y="160" width="54"  height="54"  rx="11" fill="#a8d027" opacity="0.80" transform="rotate(-2, 159, 187)"/>
 
-  <!-- Bloque grande central izquierda -->
-  <rect x="36"  y="148" width="86"  height="96"  rx="16" fill="#e8a020" opacity="0.8"  transform="rotate(3, 79, 196)"/>
-  <!-- Ghost mediano junto -->
-  <rect x="132" y="160" width="54"  height="54"  rx="11" fill="rgba(255,255,255,0.06)" transform="rotate(-2, 159, 187)"/>
+  <!-- Bloque azul índigo derecha alto -->
+  <rect x="376" y="142" width="76"  height="106" rx="16" fill="#3d4ec6" opacity="0.85"  transform="rotate(-3, 414, 195)"/>
+  <!-- Bloque rosa/fucsia solapado -->
+  <rect x="318" y="158" width="52"  height="52"  rx="11" fill="#d63384" opacity="0.80"  transform="rotate(4, 344, 184)"/>
 
-  <!-- Bloque azul derecha alto -->
-  <rect x="376" y="142" width="76"  height="106" rx="16" fill="#2855a0" opacity="0.8"  transform="rotate(-3, 414, 195)"/>
-  <!-- Pequeño dorado solapado -->
-  <rect x="318" y="158" width="52"  height="52"  rx="11" fill="#e8a020" opacity="0.7"  transform="rotate(4, 344, 184)"/>
+  <!-- Bloques centrales variados -->
+  <rect x="188" y="130" width="62"  height="86"  rx="14" fill="#2855a0" opacity="0.80" transform="rotate(-2, 219, 173)"/>
+  <rect x="264" y="118" width="44"  height="44"  rx="10" fill="#00c896" opacity="0.75" transform="rotate(3, 286, 140)"/>
+  <rect x="264" y="174" width="68"  height="50"  rx="12" fill="#f5b940" opacity="0.70" transform="rotate(-3, 298, 199)"/>
 
-  <!-- Bloques centrales — los más flotantes, irregulares -->
-  <rect x="188" y="130" width="62"  height="86"  rx="14" fill="#2855a0" opacity="0.75" transform="rotate(-2, 219, 173)"/>
-  <rect x="264" y="118" width="44"  height="44"  rx="10" fill="#3a7bd5" opacity="0.55" transform="rotate(3, 286, 140)"/>
-  <rect x="264" y="174" width="68"  height="50"  rx="12" fill="rgba(255,255,255,0.06)" transform="rotate(-3, 298, 199)"/>
+  <!-- Bloque turquesa bajo izquierda -->
+  <rect x="44"  y="264" width="72"  height="52"  rx="13" fill="#0097a7" opacity="0.75" transform="rotate(-3, 80, 290)"/>
+  <!-- Bloque naranja quemado bajo derecha -->
+  <rect x="396" y="270" width="66"  height="48"  rx="13" fill="#e67e22" opacity="0.80"  transform="rotate(3, 429, 294)"/>
 
-  <!-- Bloque bajo izquierda -->
-  <rect x="44"  y="264" width="72"  height="52"  rx="13" fill="#3a7bd5" opacity="0.55" transform="rotate(-3, 80, 290)"/>
-  <!-- Bloque bajo derecha -->
-  <rect x="396" y="270" width="66"  height="48"  rx="13" fill="#3a7bd5" opacity="0.5"  transform="rotate(3, 429, 294)"/>
+  <!-- Bloque violeta bajo centro -->
+  <rect x="200" y="242" width="52"  height="38"  rx="10" fill="#9b59b6" opacity="0.70" transform="rotate(2, 226, 261)"/>
+  <!-- Bloque rojo carmesí pequeño -->
+  <rect x="268" y="236" width="42"  height="46"  rx="10" fill="#c0392b" opacity="0.75" transform="rotate(-2, 289, 259)"/>
 
-  <!-- Bloque ghost bajo centro -->
-  <rect x="200" y="242" width="52"  height="38"  rx="10" fill="rgba(255,255,255,0.05)" transform="rotate(2, 226, 261)"/>
-  <rect x="268" y="236" width="42"  height="46"  rx="10" fill="#e8a020" opacity="0.55" transform="rotate(-2, 289, 259)"/>
-
-  <!-- === LOGOTYPE — más grande, con más aire === -->
+  <!-- LOGOTYPE -->
   <text x="260" y="418"
         font-family="'Arial Black', 'Arial', sans-serif"
         font-size="90"
         font-weight="900"
         text-anchor="middle"
-        fill="white"
-        letter-spacing="-3">IAnus</text>
+        letter-spacing="-3">
+    <tspan fill="#f5b940">IA</tspan><tspan fill="white">nus</tspan>
+  </text>
 
   <rect x="110" y="430" width="300" height="4" rx="2" fill="url(#gold)"/>
 
