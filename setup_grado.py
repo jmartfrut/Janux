@@ -553,6 +553,139 @@ def insert_festivos_calendario(conn, calendario):
     print(f"  ✅ {count} días en festivos_calendario")
 
 
+def import_clases_desde_excel(conn, clases_importadas):
+    """
+    Inserta en la BD las clases importadas desde Excel de curso anterior.
+    Mapea semana N → semana N del nuevo calendario.
+    Respeta los días no-lectivos del nuevo año (no los sobreescribe).
+    """
+    if not clases_importadas:
+        print("  ℹ️  No hay clases para importar.")
+        return
+
+    # Mapa franja_label → franja_id (coincidencia exacta y por prefijo "HH:MM")
+    franjas_db = conn.execute("SELECT id, label FROM franjas ORDER BY orden").fetchall()
+    franja_map = {}
+    for f in franjas_db:
+        label = f[1].strip()
+        franja_map[label] = f[0]
+        prefix = label[:5].rstrip()
+        franja_map.setdefault(prefix, f[0])
+
+    def get_franja_id(label):
+        label = (label or '').strip()
+        if label in franja_map:
+            return franja_map[label]
+        return franja_map.get(label[:5].rstrip())
+
+    # Mapa (curso, cuatrimestre) → [grupo_id, …]
+    grupos_db = conn.execute("SELECT id, curso, cuatrimestre FROM grupos").fetchall()
+    grupos_map = {}
+    for g in grupos_db:
+        grupos_map.setdefault((g[1], g[2]), []).append(g[0])
+
+    count_ok         = 0
+    count_nolect     = 0
+    count_nofranja   = 0
+    count_nogrupo    = 0
+    count_nosem      = 0
+
+    for clase in clases_importadas:
+        curso      = clase.get('curso')
+        cuat       = clase.get('cuatrimestre')
+        sem_num    = clase.get('semana')
+        dia        = (clase.get('dia') or '').strip().upper()
+        franja_lbl = clase.get('franja_label', '')
+        codigo     = (clase.get('asig_codigo') or '').strip()
+        nombre     = (clase.get('asig_nombre') or '').strip()
+        tipo       = clase.get('tipo', '')
+        subgrupo   = clase.get('subgrupo', '')
+        aula_ov    = clase.get('aula_override', '')
+
+        if not codigo or not sem_num or not dia:
+            continue
+
+        franja_id = get_franja_id(franja_lbl)
+        if franja_id is None:
+            count_nofranja += 1
+            continue
+
+        grupo_ids = grupos_map.get((curso, cuat), [])
+        if not grupo_ids:
+            count_nogrupo += 1
+            continue
+
+        # Buscar o crear asignatura
+        asig_row = conn.execute(
+            "SELECT id FROM asignaturas WHERE codigo=?", (codigo,)
+        ).fetchone()
+        if asig_row:
+            asig_id = asig_row[0]
+        else:
+            cur = conn.execute(
+                "INSERT INTO asignaturas (codigo, nombre, curso, cuatrimestre) VALUES (?,?,?,?)",
+                (codigo, nombre, curso, cuat)
+            )
+            asig_id = cur.lastrowid
+            conn.execute(
+                "INSERT OR IGNORE INTO fichas "
+                "(asignatura_id, creditos, af1, af2, af4) VALUES (?,6,0,0,0)",
+                (asig_id,)
+            )
+
+        # Determinar campo aula (LAB / INFO / aula especial / vacío = teoría)
+        aula      = aula_ov if aula_ov else tipo
+        contenido = f"[{codigo}] {nombre}"
+        if tipo:
+            contenido += f" | {tipo}"
+        if subgrupo:
+            contenido += f" | Subgrupos: {subgrupo}"
+
+        for grupo_id in grupo_ids:
+            sem_row = conn.execute(
+                "SELECT id FROM semanas WHERE grupo_id=? AND numero=?",
+                (grupo_id, sem_num)
+            ).fetchone()
+            if not sem_row:
+                count_nosem += 1
+                continue
+            sem_id = sem_row[0]
+
+            existing = conn.execute(
+                "SELECT id, es_no_lectivo FROM clases "
+                "WHERE semana_id=? AND dia=? AND franja_id=?",
+                (sem_id, dia, franja_id)
+            ).fetchone()
+
+            if existing:
+                if existing[1]:          # día no-lectivo en el nuevo año → no tocar
+                    count_nolect += 1
+                    continue
+                conn.execute(
+                    "UPDATE clases SET asignatura_id=?, aula=?, subgrupo=?, "
+                    "observacion='', es_no_lectivo=0, contenido=? WHERE id=?",
+                    (asig_id, aula, subgrupo, contenido, existing[0])
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO clases "
+                    "(semana_id, dia, franja_id, asignatura_id, aula, subgrupo, "
+                    " observacion, es_no_lectivo, contenido) "
+                    "VALUES (?,?,?,?,?,?,'',0,?)",
+                    (sem_id, dia, franja_id, asig_id, aula, subgrupo, contenido)
+                )
+            count_ok += 1
+
+    conn.commit()
+    print(f"  ✅ {count_ok} clases importadas desde Excel")
+    if count_nolect:
+        print(f"  ℹ️  {count_nolect} clases omitidas (día no-lectivo en nuevo curso)")
+    if count_nofranja:
+        print(f"  ⚠️  {count_nofranja} clases sin franja horaria coincidente")
+    if count_nogrupo + count_nosem:
+        print(f"  ⚠️  {count_nogrupo + count_nosem} clases sin grupo/semana coincidente")
+
+
 def apply_no_lectivos(conn, fecha_maps):
     """
     Crea entradas en clases con es_no_lectivo=1 para los días festivos/no-lectivos

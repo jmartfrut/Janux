@@ -809,6 +809,34 @@ def api_db_backup(_data):
     return {"ok": True, "backup": backup_name, "path": backup_path}
 
 
+def api_toggle_destacada(data):
+    """POST /api/destacada/toggle — añade o elimina un par (codigo, grupo_num) de asignaturas_destacadas."""
+    codigo    = data.get("codigo", "").strip()
+    grupo_num = str(data.get("grupo_num", "")).strip()
+    if not codigo:
+        return {"ok": False, "error": "codigo requerido"}
+    conn = get_db()
+    exists = conn.execute(
+        "SELECT 1 FROM asignaturas_destacadas WHERE codigo=? AND grupo_num=?",
+        (codigo, grupo_num)
+    ).fetchone()
+    if exists:
+        conn.execute(
+            "DELETE FROM asignaturas_destacadas WHERE codigo=? AND grupo_num=?",
+            (codigo, grupo_num)
+        )
+        action = "removed"
+    else:
+        conn.execute(
+            "INSERT OR IGNORE INTO asignaturas_destacadas (codigo, grupo_num) VALUES (?,?)",
+            (codigo, grupo_num)
+        )
+        action = "added"
+    conn.commit()
+    conn.close()
+    return {"ok": True, "action": action, "codigo": codigo, "grupo_num": grupo_num}
+
+
 # ─── ROUTE MAP ───
 
 API_ROUTES = {
@@ -827,6 +855,7 @@ API_ROUTES = {
     "/api/finales/checklist":        ("GET",  api_get_finales_checklist),
     "/api/finales/checklist/toggle": ("POST", api_toggle_finales_checklist),
     "/api/db/backup":                ("POST", api_db_backup),
+    "/api/destacada/toggle":         ("POST", api_toggle_destacada),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero
@@ -844,6 +873,8 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
             self.serve_finales_pdf(params)
         elif parsed.path == "/api/logo":
             self.serve_logo()
+        elif parsed.path == "/api/logo_svg":
+            self.serve_logo_svg()
         elif parsed.path in API_ROUTES and API_ROUTES[parsed.path][0] == "GET":
             params = parse_qs(parsed.query)
             result = API_ROUTES[parsed.path][1](params)
@@ -909,6 +940,20 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
         data = open(logo_png, 'rb').read()
         self.send_response(200)
         self.send_header('Content-Type', 'image/png')
+        self.send_header('Content-Length', len(data))
+        self.send_header('Cache-Control', 'public, max-age=86400')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_logo_svg(self):
+        """GET /api/logo_svg — devuelve el logo IAnus en formato SVG."""
+        svg_path = os.path.join(SCRIPT_DIR, "docs", "logo_ianus.svg")
+        if not os.path.exists(svg_path):
+            self.send_response(404); self.end_headers(); return
+        data = open(svg_path, 'rb').read()
+        self.send_response(200)
+        self.send_header('Content-Type', 'image/svg+xml')
         self.send_header('Content-Length', len(data))
         self.send_header('Cache-Control', 'public, max-age=86400')
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -1096,7 +1141,14 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .sch-no-lectivo-single{background:var(--no-lectivo);cursor:default;text-align:center;vertical-align:middle}
 .sch-divider-row td{background:#c8d0db;padding:3px 0;border:none;height:6px;line-height:0}
 .no-lectivo-full{font-size:1.1rem;font-weight:700;color:var(--text-light);display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
-.subject-card{width:100%;border-radius:6px;padding:6px 8px;font-size:.76rem;line-height:1.4}
+.subject-card{width:100%;border-radius:6px;padding:6px 8px;font-size:.76rem;line-height:1.4;position:relative}
+.pceo-btn{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.12);border:none;cursor:pointer;font-size:.85rem;line-height:1;padding:3px 4px;border-radius:4px;opacity:0;transition:opacity .15s,background .15s;color:#888}
+.subject-card:hover .pceo-btn{opacity:1}
+.pceo-btn.active{opacity:1!important;color:#e8a020;text-shadow:0 0 8px rgba(232,160,32,.7);background:rgba(0,0,0,.15)}
+.pceo-btn:hover{background:rgba(0,0,0,.22);color:#555}
+.color-destacada .pceo-btn{color:rgba(255,255,255,.6)}
+.color-destacada .pceo-btn.active{color:#f5b940;background:rgba(0,0,0,.2)}
+.color-destacada .pceo-btn:hover{background:rgba(0,0,0,.25);color:#fff}
 .subject-name{font-weight:700;font-size:.79rem;margin-bottom:2px}
 .subject-code{font-size:.7rem;opacity:.7}
 .subject-tags{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
@@ -1448,14 +1500,16 @@ select:focus,input:focus{border-color:var(--primary-light)}
 <body>
 
 <header>
-  <div>
-    <h1>Gestor de Horarios — DEGREE_ACRONYM_PLACEHOLDER &nbsp;Curso CURSO_LABEL_PLACEHOLDER</h1>
-    <div class="subtitle" id="headerSubtitle">DEGREE_NAME_PLACEHOLDER · INSTITUTION_ACRONYM_PLACEHOLDER</div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <img src="/api/logo_svg" alt="IAnus" style="height:68px;width:68px;border-radius:14px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.3)"/>
+    <div>
+      <h1>Gestor de Horarios — DEGREE_ACRONYM_PLACEHOLDER &nbsp;Curso CURSO_LABEL_PLACEHOLDER</h1>
+      <div class="subtitle" id="headerSubtitle">DEGREE_NAME_PLACEHOLDER · INSTITUTION_ACRONYM_PLACEHOLDER</div>
+    </div>
   </div>
   <div class="header-right">
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
     <button class="btn btn-outline btn-sm" id="btnBackupDB" onclick="backupDB()" title="Fuerza WAL checkpoint y crea copia de seguridad en backups/">&#128190; Guardar copia</button>
-    <button class="btn btn-outline btn-sm" onclick="showStats()">Estadisticas</button>
   </div>
 </header>
 
@@ -1783,7 +1837,9 @@ function buildSubjectCard(cls, color, search, interactive) {
   const cardColor = parcial ? 'color-parcial' : (destacada ? 'color-destacada' : color);
   const match = search && cls.asig_nombre && cls.asig_nombre.toLowerCase().includes(search);
   const onclick = interactive ? ` onclick="openEdit(${cls.id})"` : '';
+  const pceoBtnHtml = (!parcial && interactive && cls.asig_codigo) ? `<button class="pceo-btn${destacada?' active':''}" onclick="event.stopPropagation();togglePceo('${cls.asig_codigo}',currentGroup)" title="${destacada?'Quitar PCEO':'Marcar como PCEO'}">&#11088;</button>` : '';
   return `<div class="subject-card ${cardColor}${match?' search-highlight':''}"${onclick} style="cursor:${interactive?'pointer':'default'}">
+    ${pceoBtnHtml}
     ${parcial ? `<span class="parcial-badge">&#128221; EXAMEN ${cls.observacion.toUpperCase()}</span>` : ''}
     ${destacada ? `<span class="parcial-badge" style="color:#ffffff;background:rgba(255,255,255,.15);font-size:.6rem">&#11088; DESTACADAS_BADGE_PLACEHOLDER</span>` : ''}
     <div class="subject-name">${cls.asig_nombre||cls.contenido||''}</div>
@@ -1793,6 +1849,19 @@ function buildSubjectCard(cls, color, search, interactive) {
       ${cls.subgrupo?`<span class="tag">&#128101; Sg.${cls.subgrupo}</span>`:''}
     </div>
   </div>`;
+}
+
+async function togglePceo(codigo, grupo_num) {
+  const res = await api('/api/destacada/toggle', {codigo, grupo_num});
+  if (res.ok) {
+    const key = codigo + '::' + grupo_num;
+    if (res.action === 'added') {
+      DB._destacadasSet.add(key);
+    } else {
+      DB._destacadasSet.delete(key);
+    }
+    renderWeek();
+  }
 }
 
 function buildWeekTableHTML(week, interactive) {
@@ -1852,7 +1921,7 @@ function buildWeekTableHTML(week, interactive) {
           ? `<div class="split-add" onclick="event.stopPropagation();openAdd(${week.semana_id},'${day}',${f.id},true)">+ Desdoble</div>`
           : '';
         html += `<td class="sch-cell${destacadaCls} ${match?'search-highlight':''}"${onclick}>
-          ${buildSubjectCard(cls, color, search, false)}
+          ${buildSubjectCard(cls, color, search, interactive)}
           ${addDesdobleBtn}
         </td>`;
       } else {

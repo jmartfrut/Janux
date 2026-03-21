@@ -143,13 +143,25 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
 .cal-marked-item .cal-tipo{font-size:.74rem;min-width:72px;color:#6a7a8a}
 .cal-marked-item input{border:1px solid #dde5ee;border-radius:5px;padding:3px 8px;font-size:.79rem;flex:1;max-width:240px}
 .cal-marked-item input:focus{outline:none;border-color:#1a3a6b}
+/* IMPORT STEP */
+.mode-cards{display:flex;gap:14px;margin:16px 0 20px}
+.mode-card{flex:1;border:2px solid #c8d4e0;border-radius:10px;padding:16px 18px;cursor:pointer;background:#fff;transition:border .2s,background .2s}
+.mode-card.selected{border-color:#1a3a6b;background:#eef4ff}
+.mode-card h4{font-size:.88rem;margin-bottom:5px;color:#1a2a3a;display:flex;align-items:center;gap:8px}
+.mode-card p{font-size:.76rem;color:#6a7a8a;margin:0;line-height:1.4}
+.excel-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;padding:9px 13px;background:#f8fafd;border-radius:8px;border:1px solid #e0e8f4;flex-wrap:wrap}
+.excel-row .curso-lbl{font-size:.85rem;font-weight:600;color:#3a4a5a;min-width:72px}
+.excel-row .file-nm{font-size:.79rem;color:#6a7a8a;font-style:italic;flex:1;min-width:80px}
+.excel-row .file-st{font-size:.79rem;min-width:90px;text-align:right}
+.import-preview-box{background:#f8fafd;border:1.5px solid #c8d4e0;border-radius:9px;padding:14px 16px;margin-top:14px;font-size:.83rem;line-height:1.7}
 /* responsive */
-@media(max-width:600px){.row2,.row3,.color-row{grid-template-columns:1fr}.stepper{justify-content:flex-start;overflow-x:auto}.step-line{width:16px}}
+@media(max-width:600px){.row2,.row3,.color-row{grid-template-columns:1fr}.stepper{justify-content:flex-start;overflow-x:auto}.step-line{width:16px}.mode-cards{flex-direction:column}}
 </style>
 </head>
 <body>
 
 <div class="top-bar">
+  <img src="/api/logo_svg" alt="IAnus" style="height:64px;width:64px;border-radius:13px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.3)"/>
   <div>
     <div class="h1" style="font-size:1.1rem;font-weight:700">Gestor de Horarios — Nuevo Grado</div>
     <div class="sub">Asistente de configuración inicial</div>
@@ -170,7 +182,9 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
   <div class="step-line"></div>
   <div class="step" data-step="6"><div class="step-circle">6</div><div class="step-label">Asignaturas</div></div>
   <div class="step-line"></div>
-  <div class="step" data-step="7"><div class="step-circle">7</div><div class="step-label">Generar</div></div>
+  <div class="step" data-step="7"><div class="step-circle">7</div><div class="step-label">Importar</div></div>
+  <div class="step-line"></div>
+  <div class="step" data-step="8"><div class="step-circle">8</div><div class="step-label">Generar</div></div>
 </div>
 
 <!-- ══════ STEP 1: BÁSICO ══════ -->
@@ -210,7 +224,7 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
       <input type="number" id="b-port" value="8080" min="1024" max="65535">
     </div>
     <div class="field">
-      <label>Badge "destacadas"</label>
+      <label>Badge "PCEO"</label>
       <input type="text" id="b-badge" placeholder="ej. PCEO GIM+GIDI">
       <div class="hint">Etiqueta informativa en la interfaz (opcional)</div>
     </div>
@@ -449,9 +463,44 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
   </div>
 </div>
 
-<!-- ══════ STEP 7: GENERAR ══════ -->
+<!-- ══════ STEP 7: IMPORTAR HORARIO ══════ -->
 <div class="card" id="step7" style="display:none">
-  <h2>7 · Generar proyecto</h2>
+  <h2>7 · Importar horario de año anterior</h2>
+  <div class="desc">Opcional. Puedes importar la distribución de clases desde los Excel del curso anterior para no empezar desde cero.</div>
+
+  <div class="mode-cards">
+    <div class="mode-card selected" id="mc-vacio" onclick="setImportMode('vacio')">
+      <h4>📋 Horario vacío</h4>
+      <p>La base de datos se generará sin clases asignadas. Las irás añadiendo manualmente desde la interfaz.</p>
+    </div>
+    <div class="mode-card" id="mc-importar" onclick="setImportMode('importar')">
+      <h4>📂 Importar desde Excel anterior</h4>
+      <p>Selecciona los archivos Excel del año pasado. Las clases se trasladarán al nuevo calendario respetando los festivos que hayas configurado.</p>
+    </div>
+  </div>
+
+  <div id="import-excel-panel" style="display:none">
+    <div class="sec-title">Archivos Excel por curso</div>
+    <div class="hint" style="margin-bottom:12px">Un archivo por curso (contendrá los dos cuatrimestres). Ej: <code>25-26_GIDI 1C.xlsx</code></div>
+    <div id="excel-upload-rows"></div>
+
+    <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+      <button class="btn btn-outline" onclick="analizarExcels()" id="btn-analizar">🔍 Analizar Excel</button>
+      <span id="analizar-hint" style="font-size:.78rem;color:#8a9ab0">Selecciona al menos un archivo y pulsa Analizar.</span>
+    </div>
+
+    <div id="import-preview" style="display:none;margin-top:14px"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="goStep(6)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goStep(8)">Siguiente →</button>
+  </div>
+</div>
+
+<!-- ══════ STEP 8: GENERAR ══════ -->
+<div class="card" id="step8" style="display:none">
+  <h2>8 · Generar proyecto</h2>
   <div class="desc">Revisa el resumen y pulsa "Generar" para crear la carpeta del grado con la base de datos.</div>
 
   <div id="summary-box" style="background:#f8fafd;border:1.5px solid #c8d4e0;border-radius:8px;padding:16px 20px;font-size:.85rem;line-height:1.9;margin-bottom:20px"></div>
@@ -472,7 +521,7 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
   </div>
 
   <div class="actions" style="margin-top:20px">
-    <button class="btn btn-secondary" onclick="goStep(6)">← Anterior</button>
+    <button class="btn btn-secondary" onclick="goStep(7)">← Anterior</button>
     <button class="btn btn-outline" onclick="resetWizard()">🔄 Crear otro grado</button>
   </div>
 </div>
@@ -490,7 +539,8 @@ function goStep(n) {
   document.getElementById('step' + currentStep).style.display = 'block';
   updateStepper();
   if (n === 2) renderCursoTable();
-  if (n === 7) renderSummary();
+  if (n === 7) initImportStep();
+  if (n === 8) renderSummary();
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -858,6 +908,7 @@ function renderSummary() {
     <b>Calendario 1C:</b> ${cal['1C'].inicio||'—'} → ${cal['1C'].fin||'—'} · ${f1.length} festivos<br>
     <b>Calendario 2C:</b> ${cal['2C'].inicio||'—'} → ${cal['2C'].fin||'—'} · ${f2.length} festivos · ${vac.length} periodos vacaciones<br>
     <b>Asignaturas:</b> ${asignaturas.length} filas<br>
+    <b>Importar horario:</b> ${importMode === 'importar' ? `Sí — ${importedClases.length} clases desde Excel` : 'No (horario vacío)'}<br>
     <b>Carpeta destino:</b> grados/${b.siglas}/
   `;
 }
@@ -912,12 +963,13 @@ async function generarGrado() {
   consoleLog('Enviando datos al servidor…', 'info');
 
   const payload = {
-    basico:      getBasico(),
-    estructura:  getEstructura(),
-    calendario:  getCalendario(),
-    actividades: getActividades(),
-    apariencia:  getApariencia(),
-    asignaturas
+    basico:             getBasico(),
+    estructura:         getEstructura(),
+    calendario:         getCalendario(),
+    actividades:        getActividades(),
+    apariencia:         getApariencia(),
+    asignaturas,
+    clases_importadas:  importMode === 'importar' ? importedClases : []
   };
 
   try {
@@ -964,6 +1016,140 @@ function consoleLog(text, cls) {
 function resetWizard() {
   if (!confirm('¿Crear un nuevo grado? Se perderán los datos actuales.')) return;
   location.reload();
+}
+
+// ─── STEP 7: IMPORTAR HORARIO ─────────────────────────────────────────────────
+let importMode    = 'vacio';
+let importedClases = [];
+let excelFiles    = {};   // curso_num (int) → File
+
+function setImportMode(mode) {
+  importMode = mode;
+  document.getElementById('mc-vacio').classList.toggle('selected',    mode === 'vacio');
+  document.getElementById('mc-importar').classList.toggle('selected', mode === 'importar');
+  const panel = document.getElementById('import-excel-panel');
+  panel.style.display = mode === 'importar' ? 'block' : 'none';
+  if (mode === 'importar') renderExcelUploadRows();
+}
+
+function initImportStep() {
+  if (importMode === 'importar') renderExcelUploadRows();
+}
+
+function renderExcelUploadRows() {
+  const n = parseInt(gv('e-num-cursos')) || 4;
+  const container = document.getElementById('excel-upload-rows');
+  // Preserve existing file selections
+  const prevFiles = { ...excelFiles };
+  container.innerHTML = '';
+  excelFiles = {};
+  for (let i = 1; i <= n; i++) {
+    const div = document.createElement('div');
+    div.className = 'excel-row';
+    const fname = prevFiles[i] ? prevFiles[i].name : 'No seleccionado';
+    div.innerHTML = `
+      <span class="curso-lbl">${i}º Curso</span>
+      <label class="btn btn-outline" style="cursor:pointer;font-size:.82rem;margin:0;padding:6px 14px">
+        📂 Seleccionar
+        <input type="file" accept=".xlsx,.xls" style="display:none"
+               onchange="excelFileSelected(${i}, event)">
+      </label>
+      <span class="file-nm" id="excel-nm-${i}">${fname}</span>
+      <span class="file-st" id="excel-st-${i}"></span>`;
+    container.appendChild(div);
+    if (prevFiles[i]) excelFiles[i] = prevFiles[i];
+  }
+}
+
+function excelFileSelected(curso, event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  excelFiles[curso] = file;
+  const nm = document.getElementById(`excel-nm-${curso}`);
+  if (nm) nm.textContent = file.name;
+  const st = document.getElementById(`excel-st-${curso}`);
+  if (st) st.innerHTML = '';
+  event.target.value = '';
+  // Reset preview
+  const p = document.getElementById('import-preview');
+  if (p) { p.style.display = 'none'; p.innerHTML = ''; }
+  importedClases = [];
+}
+
+async function analizarExcels() {
+  const btn = document.getElementById('btn-analizar');
+  const hint = document.getElementById('analizar-hint');
+  const preview = document.getElementById('import-preview');
+
+  if (!Object.keys(excelFiles).length) {
+    alert('Selecciona al menos un archivo Excel antes de analizar.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Analizando…';
+  hint.textContent = '';
+  preview.style.display = 'block';
+  preview.innerHTML = '<div style="color:#6a7a8a;font-size:.83rem">Analizando archivos… esto puede tardar unos segundos.</div>';
+  importedClases = [];
+
+  const resumen = [];
+  let hasError  = false;
+
+  for (const [cursoStr, file] of Object.entries(excelFiles)) {
+    const curso = parseInt(cursoStr);
+    try {
+      const b64 = await fileToBase64(file);
+      const r   = await fetch('/api/parse_excel', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ file_b64: b64, curso })
+      });
+      const res = await r.json();
+      if (!res.ok) {
+        resumen.push(`<div style="color:#c0392b">❌ ${curso}º Curso: ${res.error||'Error desconocido'}</div>`);
+        hasError = true;
+      } else {
+        const clases = res.clases || [];
+        importedClases = importedClases.concat(clases);
+        const c1 = clases.filter(c => c.cuatrimestre === '1C').length;
+        const c2 = clases.filter(c => c.cuatrimestre === '2C').length;
+        const nasig = (res.asignaturas || []).length;
+        resumen.push(`<div style="color:#22863a">✅ ${curso}º Curso: ${clases.length} clases (1C: ${c1} · 2C: ${c2}) · ${nasig} asignaturas</div>`);
+        const st = document.getElementById(`excel-st-${curso}`);
+        if (st) st.innerHTML = `<span style="color:#22863a">✅ ${clases.length}</span>`;
+      }
+    } catch(e) {
+      resumen.push(`<div style="color:#c0392b">❌ ${curso}º Curso: ${e.message}</div>`);
+      hasError = true;
+    }
+  }
+
+  const total = importedClases.length;
+  preview.innerHTML = `
+    <div class="import-preview-box">
+      <div style="font-weight:700;font-size:.9rem;color:${hasError?'#c0392b':'#22863a'};margin-bottom:10px">
+        ${hasError ? '⚠️' : '✅'} Total: <strong>${total} clases</strong> listas para importar
+      </div>
+      ${resumen.join('')}
+      ${total > 0 ? `<div style="margin-top:10px;font-size:.76rem;color:#6a7a8a">
+        Las clases se trasladarán semana a semana al nuevo calendario.<br>
+        Los días festivos o no-lectivos que hayas configurado en el paso 3 se respetarán automáticamente.
+      </div>` : ''}
+    </div>`;
+
+  btn.disabled = false;
+  btn.textContent = '🔍 Analizar Excel';
+  hint.textContent = total > 0 ? 'Pulsa "Siguiente →" para continuar.' : 'No se encontraron clases.';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
@@ -1159,6 +1345,37 @@ wait "$SERVER_PID"
     subprocess.run(['chmod', '+x', str(sh_path)], check=False)
 
 
+def api_parse_excel(data):
+    """
+    Parsea un archivo Excel de horarios (recibido en base64) y devuelve
+    la lista de clases de ambos cuatrimestres.
+    """
+    try:
+        import base64
+        from importar_horarios import parse_excel_all_cuats
+
+        file_b64 = data.get('file_b64', '')
+        curso    = int(data.get('curso', 1))
+
+        if not file_b64:
+            return {'ok': False, 'error': 'No se recibió ningún archivo.'}
+
+        file_bytes = base64.b64decode(file_b64)
+        result     = parse_excel_all_cuats(file_bytes, curso)
+
+        if result.get('error'):
+            return {'ok': False, 'error': result['error']}
+
+        clases = result.get('1C', []) + result.get('2C', [])
+        return {
+            'ok':          True,
+            'clases':      clases,
+            'asignaturas': result.get('asignaturas', []),
+        }
+    except Exception:
+        return {'ok': False, 'error': traceback.format_exc()}
+
+
 def api_crear(data):
     try:
         siglas = data['basico']['siglas'].upper().strip()
@@ -1192,9 +1409,28 @@ def api_crear(data):
         # Launchers en la raíz del proyecto
         generar_launchers(grado_dir, siglas, cfg)
 
+        # ── Importar clases desde Excel (si se proporcionaron) ────────────────
+        import_log = ''
+        clases_importadas = data.get('clases_importadas', [])
+        if clases_importadas and result.returncode == 0:
+            try:
+                import sqlite3 as _sqlite3
+                from setup_grado import import_clases_desde_excel
+                db_file = grado_dir / cfg['server']['db_name']
+                if db_file.exists():
+                    conn2 = _sqlite3.connect(str(db_file))
+                    conn2.execute("PRAGMA foreign_keys = ON")
+                    import_clases_desde_excel(conn2, clases_importadas)
+                    conn2.close()
+                    import_log = f'\n✅ {len(clases_importadas)} clases importadas desde Excel.'
+                else:
+                    import_log = '\n⚠️ No se encontró la BD para importar clases.'
+            except Exception:
+                import_log = f'\n⚠️ Error al importar clases:\n{traceback.format_exc()}'
+
         return {
-            'ok':       result.returncode == 0,
-            'output':   output,
+            'ok':        result.returncode == 0,
+            'output':    output + import_log,
             'grado_dir': str(grado_dir)
         }
 
@@ -1213,6 +1449,8 @@ class WizardHandler(BaseHTTPRequestHandler):
             self._html(WIZARD_HTML)
         elif self.path == '/api/ping':
             self._json({'ok': True})
+        elif self.path == '/api/logo_svg':
+            self._svg(BASE_DIR / 'docs' / 'logo_ianus.svg')
         else:
             self._404()
 
@@ -1220,6 +1458,9 @@ class WizardHandler(BaseHTTPRequestHandler):
         if self.path == '/api/crear':
             data = self._read_json()
             self._json(api_crear(data))
+        elif self.path == '/api/parse_excel':
+            data = self._read_json()
+            self._json(api_parse_excel(data))
         else:
             self._404()
 
@@ -1242,6 +1483,18 @@ class WizardHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', len(b))
         self.end_headers()
         self.wfile.write(b)
+
+    def _svg(self, path):
+        try:
+            data = Path(path).read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/svg+xml')
+            self.send_header('Content-Length', len(data))
+            self.send_header('Cache-Control', 'public, max-age=86400')
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self._404()
 
     def _404(self):
         self.send_response(404)
