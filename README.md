@@ -44,10 +44,7 @@ IAnus/
     │   ├── fichas.pdf
     │   ├── Iniciar Horarios GIM 2627.command  # macOS
     │   ├── Iniciar Horarios GIM 2627.sh       # Linux
-    │   ├── Iniciar Horarios GIM 2627.bat      # Windows
-    │   ├── Iniciar Editor GIM.command
-    │   ├── Iniciar Editor GIM.sh
-    │   └── Iniciar Editor GIM.bat
+    │   └── Iniciar Horarios GIM 2627.bat      # Windows
     └── GIDI/                  # Grado en Ingeniería de Diseño Industrial
         ├── config.json
         ├── horariosGIDI.db
