@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" width="520" height="520">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a3a6b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f2347;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#e8a020;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5b940;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <clipPath id="roundClip">
+      <rect width="520" height="520" rx="80" ry="80"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="520" height="520" rx="80" ry="80" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid texture in background -->
+  <g opacity="0.06">
+    <line x1="104" y1="0" x2="104" y2="520" stroke="white" stroke-width="1"/>
+    <line x1="208" y1="0" x2="208" y2="520" stroke="white" stroke-width="1"/>
+    <line x1="312" y1="0" x2="312" y2="520" stroke="white" stroke-width="1"/>
+    <line x1="416" y1="0" x2="416" y2="520" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="104" x2="520" y2="104" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="208" x2="520" y2="208" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="312" x2="520" y2="312" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="416" x2="520" y2="416" stroke="white" stroke-width="1"/>
+  </g>
+
+  <!-- === TIMETABLE GRID === -->
+  <!-- Grid container: 5 cols (Mon-Fri) × 6 rows (time slots), centered -->
+  <!-- Each cell: 56px wide × 36px tall, gap 5px -->
+  <!-- Grid total: 5*56 + 4*5 = 300px wide, 6*36 + 5*5 = 241px tall -->
+  <!-- Positioned: x=110, y=95 -->
+
+  <!-- Header row: days of week -->
+  <g fill="#e8a020" font-family="'Arial', sans-serif" font-size="11" font-weight="700" text-anchor="middle">
+    <text x="138" y="90">L</text>
+    <text x="199" y="90">M</text>
+    <text x="260" y="90">X</text>
+    <text x="321" y="90">J</text>
+    <text x="382" y="90">V</text>
+  </g>
+
+  <!-- Time labels on left -->
+  <g fill="rgba(255,255,255,0.45)" font-family="'Arial', sans-serif" font-size="9" text-anchor="end">
+    <text x="104" y="117">9h</text>
+    <text x="104" y="158">11h</text>
+    <text x="104" y="199">13h</text>
+    <text x="104" y="240">15h</text>
+    <text x="104" y="281">17h</text>
+    <text x="104" y="322">19h</text>
+  </g>
+
+  <!-- === GRID CELLS === -->
+  <!-- Row 1 (9:00-10:50) -->
+  <rect x="110" y="97" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="171" y="97" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>   <!-- AF1 blue -->
+  <rect x="232" y="97" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="293" y="97" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+  <rect x="354" y="97" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Row 2 (11:10-13:00) -->
+  <rect x="110" y="138" width="56" height="36" rx="5" fill="#e8a020" opacity="0.85"/> <!-- accent -->
+  <rect x="171" y="138" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="232" y="138" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+  <rect x="293" y="138" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="354" y="138" width="56" height="36" rx="5" fill="#e8a020" opacity="0.85"/>
+
+  <!-- Row 3 (13:10-15:00) -->
+  <rect x="110" y="179" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="171" y="179" width="56" height="36" rx="5" fill="#e8a020" opacity="0.85"/>
+  <rect x="232" y="179" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="293" y="179" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+  <rect x="354" y="179" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Row 4 (15:00-16:50) — separator line (morning/afternoon) -->
+  <rect x="110" y="220" width="56" height="36" rx="5" fill="#3a7bd5" opacity="0.6"/>  <!-- lab teal -->
+  <rect x="171" y="220" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="232" y="220" width="56" height="36" rx="5" fill="#3a7bd5" opacity="0.6"/>
+  <rect x="293" y="220" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="354" y="220" width="56" height="36" rx="5" fill="#3a7bd5" opacity="0.6"/>
+
+  <!-- Row 5 (17:10-19:00) -->
+  <rect x="110" y="261" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="171" y="261" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+  <rect x="232" y="261" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="293" y="261" width="56" height="36" rx="5" fill="#e8a020" opacity="0.85"/>
+  <rect x="354" y="261" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Row 6 (19:10-21:00) -->
+  <rect x="110" y="302" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+  <rect x="171" y="302" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="232" y="302" width="56" height="36" rx="5" fill="#e8a020" opacity="0.85"/>
+  <rect x="293" y="302" width="56" height="36" rx="5" fill="rgba(255,255,255,0.08)"/>
+  <rect x="354" y="302" width="56" height="36" rx="5" fill="#2855a0" opacity="0.9"/>
+
+  <!-- Morning/afternoon divider line -->
+  <line x1="110" y1="217" x2="410" y2="217" stroke="rgba(255,255,255,0.18)" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- === LOGOTYPE === -->
+  <!-- "IAnus" wordmark -->
+  <text x="260" y="395"
+        font-family="'Arial Black', 'Arial', sans-serif"
+        font-size="72"
+        font-weight="900"
+        text-anchor="middle"
+        fill="white"
+        letter-spacing="-2">IAnus</text>
+
+  <!-- Accent underline bar -->
+  <rect x="110" y="408" width="300" height="5" rx="2.5" fill="url(#accentGrad)"/>
+
+  <!-- Subtitle -->
+  <text x="260" y="448"
+        font-family="'Arial', sans-serif"
+        font-size="16"
+        font-weight="400"
+        text-anchor="middle"
+        fill="rgba(255,255,255,0.55)"
+        letter-spacing="4">GESTOR DE HORARIOS</text>
+
+  <!-- UPCT badge -->
+  <rect x="200" y="463" width="120" height="26" rx="13" fill="rgba(232,160,32,0.18)" stroke="#e8a020" stroke-width="1"/>
+  <text x="260" y="481"
+        font-family="'Arial', sans-serif"
+        font-size="12"
+        font-weight="700"
+        text-anchor="middle"
+        fill="#e8a020"
+        letter-spacing="2">UPCT</text>
+</svg>
