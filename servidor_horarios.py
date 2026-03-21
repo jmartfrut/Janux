@@ -777,6 +777,38 @@ def ensure_destacadas_table():
     conn.close()
 
 
+def api_db_backup(_data):
+    """POST /api/db/backup — fuerza WAL checkpoint y crea copia de seguridad con timestamp."""
+    import shutil, datetime
+    # 1. Forzar WAL checkpoint para vaciar el journal a la BD principal
+    conn = get_db()
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL)")
+        conn.commit()
+    finally:
+        conn.close()
+    # 2. Crear carpeta backups/ junto a la BD si no existe
+    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    backup_dir = os.path.join(db_dir, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    # 3. Copiar la BD con timestamp
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    db_basename = os.path.splitext(os.path.basename(DB_PATH))[0]
+    backup_name = f"{db_basename}_backup_{ts}.db"
+    backup_path = os.path.join(backup_dir, backup_name)
+    shutil.copy2(DB_PATH, backup_path)
+    # 4. Mantener solo los 10 backups más recientes
+    all_backups = sorted(
+        [f for f in os.listdir(backup_dir) if f.startswith(f"{db_basename}_backup_") and f.endswith(".db")]
+    )
+    for old in all_backups[:-10]:
+        try:
+            os.remove(os.path.join(backup_dir, old))
+        except Exception:
+            pass
+    return {"ok": True, "backup": backup_name, "path": backup_path}
+
+
 # ─── ROUTE MAP ───
 
 API_ROUTES = {
@@ -794,6 +826,7 @@ API_ROUTES = {
     "/api/finales/reset-auto":       ("POST", api_reset_auto_finales),
     "/api/finales/checklist":        ("GET",  api_get_finales_checklist),
     "/api/finales/checklist/toggle": ("POST", api_toggle_finales_checklist),
+    "/api/db/backup":                ("POST", api_db_backup),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero
@@ -1421,6 +1454,7 @@ select:focus,input:focus{border-color:var(--primary-light)}
   </div>
   <div class="header-right">
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
+    <button class="btn btn-outline btn-sm" id="btnBackupDB" onclick="backupDB()" title="Fuerza WAL checkpoint y crea copia de seguridad en backups/">&#128190; Guardar copia</button>
     <button class="btn btn-outline btn-sm" onclick="showStats()">Estadisticas</button>
   </div>
 </header>
@@ -1594,6 +1628,29 @@ async function api(path, body) {
   }
   const res = await fetch(path);
   return res.json();
+}
+
+async function backupDB() {
+  const btn = document.getElementById('btnBackupDB');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#9203; Guardando...';
+  try {
+    const res = await api('/api/db/backup', {});
+    if (res.ok) {
+      btn.innerHTML = '&#10003; Guardado';
+      btn.style.background = 'rgba(39,174,96,.25)';
+      showToast('Copia guardada: backups/' + res.backup);
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    btn.innerHTML = '&#10007; Error';
+    btn.style.background = 'rgba(231,76,60,.25)';
+    showToast('Error al guardar: ' + e.message, true);
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+  }
 }
 
 async function toggleFichaOverride(codigo, action, grupoKey) {
