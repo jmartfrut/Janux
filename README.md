@@ -20,7 +20,7 @@ Arquitectura mínima: servidor Python local + base de datos SQLite + frontend HT
 - **Multi-grado**: cada titulación tiene su propia carpeta, BD y configuración independiente
 - **Calendario configurable**: festivos, vacaciones y días no lectivos por cuatrimestre
 - **Compatible con Dropbox/OneDrive**: los launchers copian la BD a `/tmp` (macOS) o `%TEMP%` (Windows) antes de arrancar
-- **Multiplataforma**: launchers `.command` para macOS y `.bat` para Windows
+- **Multiplataforma**: launchers `.command` para macOS, `.sh` para Linux y `.bat` para Windows
 
 ---
 
@@ -43,8 +43,10 @@ IAnus/
     │   ├── horarios_2627.db
     │   ├── fichas.pdf
     │   ├── Iniciar Horarios GIM 2627.command  # macOS
+    │   ├── Iniciar Horarios GIM 2627.sh       # Linux
     │   ├── Iniciar Horarios GIM 2627.bat      # Windows
     │   ├── Iniciar Editor GIM.command
+    │   ├── Iniciar Editor GIM.sh
     │   └── Iniciar Editor GIM.bat
     └── GIDI/                  # Grado en Ingeniería de Diseño Industrial
         ├── config.json
@@ -52,8 +54,10 @@ IAnus/
         ├── actividades_formativas_GIDI.xlsx
         ├── asignaturas_GIDI.csv
         ├── Iniciar Horarios GIDI.command
+        ├── Iniciar Horarios GIDI.sh
         ├── Iniciar Horarios GIDI.bat
         ├── Iniciar Editor GIDI.command
+        ├── Iniciar Editor GIDI.sh
         └── Iniciar Editor GIDI.bat
 ```
 
@@ -64,6 +68,16 @@ IAnus/
 ### macOS — forma recomendada
 
 Doble clic en el fichero `.command` del grado correspondiente. Los launchers copian la BD a `/tmp` antes de arrancar para evitar errores de I/O en carpetas sincronizadas (Dropbox, OneDrive, iCloud).
+
+### Linux (Ubuntu / Debian)
+
+Ejecutar el fichero `.sh` desde terminal:
+
+```bash
+bash "grados/GIM/Iniciar Horarios GIM 2627.sh"
+```
+
+Requiere `lsof` y `curl` instalados (`sudo apt install lsof curl`). El navegador se abre automáticamente con `xdg-open`.
 
 ### Windows
 
