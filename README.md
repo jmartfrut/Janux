@@ -111,15 +111,7 @@ Abre el navegador en `http://localhost:8080`.
 
 ## Añadir un nuevo grado
 
-```bash
-python3 setup_grado.py
-```
-
-El asistente crea la carpeta del grado con un `config.json` base y los launchers. Después:
-
-1. Editar `config.json` (o usar `config_editor.html` con `editor_server.py`)
-2. Colocar los Excel de horarios en `grados/<SIGLA>/EXCELS/`
-3. Construir la BD: `python3 rebuild_db.py` (desde la carpeta del grado)
+Desde la propia aplicación, mediante la interfaz gráfica.
 
 ---
 

@@ -18,6 +18,10 @@ Los cambios se guardan automáticamente al cerrar la ventana del terminal.
 - **Estadísticas** — horas reales frente a las previstas por asignatura
 - **Parciales** — calendario de exámenes y detección de solapamientos entre cursos
 
+## Añadir un nuevo grado
+
+Desde la propia aplicación, mediante la interfaz gráfica.
+
 ## Reconstruir datos desde cero
 
 Solo necesario si se actualizan los ficheros Excel o el PDF de fichas. ⚠️ Se perderán los ajustes manuales.
