@@ -224,7 +224,7 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
       <input type="number" id="b-port" value="8080" min="1024" max="65535">
     </div>
     <div class="field">
-      <label>Badge "PCEO"</label>
+      <label>Badge "Doble Grado"</label>
       <input type="text" id="b-badge" placeholder="ej. PCEO GIM+GIDI">
       <div class="hint">Etiqueta informativa en la interfaz (opcional)</div>
     </div>
@@ -249,7 +249,7 @@ td input:focus,td select:focus{outline:none;border-color:#1a3a6b}
   <div class="sec-title">Grupos por curso</div>
   <div class="tbl-wrap">
     <table id="cursos-table">
-      <thead><tr><th>Curso</th><th>Grupos 1er cuatrimestre</th><th>Grupos 2º cuatrimestre</th></tr></thead>
+      <thead><tr><th>Curso</th><th>Grupos 1er cuatrimestre</th><th>Grupos 2º cuatrimestre</th><th>Aulario</th></tr></thead>
       <tbody id="cursos-tbody"></tbody>
     </table>
   </div>
@@ -584,18 +584,21 @@ function renderCursoTable() {
   const existing = [];
   tbody.querySelectorAll('tr').forEach(tr => {
     existing.push({
-      g1c: tr.querySelector('.g1c') ? tr.querySelector('.g1c').value : 2,
-      g2c: tr.querySelector('.g2c') ? tr.querySelector('.g2c').value : 2
+      g1c:     tr.querySelector('.g1c')     ? tr.querySelector('.g1c').value     : 2,
+      g2c:     tr.querySelector('.g2c')     ? tr.querySelector('.g2c').value     : 2,
+      aulario: tr.querySelector('.aulario') ? tr.querySelector('.aulario').value : ''
     });
   });
   tbody.innerHTML = '';
   for (let i = 0; i < n; i++) {
-    const g1c = existing[i] ? existing[i].g1c : 2;
-    const g2c = existing[i] ? existing[i].g2c : (i === n-1 ? 1 : 2);
+    const g1c     = existing[i] ? existing[i].g1c     : 2;
+    const g2c     = existing[i] ? existing[i].g2c     : (i === n-1 ? 1 : 2);
+    const aulario = existing[i] ? existing[i].aulario : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><strong>${i+1}º</strong></td>
       <td><input type="number" class="g1c" value="${g1c}" min="1" max="10" style="width:80px"></td>
-      <td><input type="number" class="g2c" value="${g2c}" min="1" max="10" style="width:80px"></td>`;
+      <td><input type="number" class="g2c" value="${g2c}" min="1" max="10" style="width:80px"></td>
+      <td><input type="text" class="aulario" value="${aulario}" placeholder="ej. PS2" style="width:80px"></td>`;
     tbody.appendChild(tr);
   }
 }
@@ -929,8 +932,9 @@ function getEstructura() {
   const cursos = [];
   document.querySelectorAll('#cursos-tbody tr').forEach(tr => {
     cursos.push({
-      g1c: parseInt(tr.querySelector('.g1c').value) || 2,
-      g2c: parseInt(tr.querySelector('.g2c').value) || 2
+      g1c:     parseInt(tr.querySelector('.g1c').value) || 2,
+      g2c:     parseInt(tr.querySelector('.g2c').value) || 2,
+      aulario: tr.querySelector('.aulario') ? tr.querySelector('.aulario').value.trim() : ''
     });
   });
   return { cursos, franjas: getFranjas() };
@@ -1174,12 +1178,16 @@ def build_config(data):
 
     siglas = b['siglas'].upper().strip()
 
-    grupos_por_curso = {}
+    grupos_por_curso  = {}
+    aulario_por_curso = {}
     for i, curso in enumerate(e['cursos']):
         grupos_por_curso[str(i + 1)] = {
             '1C': int(curso.get('g1c', 2)),
             '2C': int(curso.get('g2c', 2))
         }
+        aulario = curso.get('aulario', '').strip()
+        if aulario:
+            aulario_por_curso[str(i + 1)] = aulario
 
     franjas = [{'label': f['label'], 'orden': i + 1}
                for i, f in enumerate(e.get('franjas', []))]
@@ -1220,10 +1228,11 @@ def build_config(data):
             'curso_label': b.get('curso_label', '')
         },
         'degree_structure': {
-            'num_cursos':       len(e['cursos']),
-            'num_semanas':      16,
-            'grupos_por_curso': grupos_por_curso,
-            'franjas':          franjas
+            'num_cursos':        len(e['cursos']),
+            'num_semanas':       16,
+            'grupos_por_curso':  grupos_por_curso,
+            'aulario_por_curso': aulario_por_curso,
+            'franjas':           franjas
         },
         'calendario': c,
         'branding': {
@@ -1440,18 +1449,116 @@ def api_crear(data):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PCEO — importar funciones desde nuevo_pceo.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+try:
+    from nuevo_pceo import (
+        WIZARD_HTML as PCEO_HTML,
+        api_grados       as pceo_api_grados,
+        api_leer_pceo    as pceo_api_leer_pceo,
+        api_crear_pceo   as pceo_api_crear_pceo,
+    )
+    _PCEO_AVAILABLE = True
+except ImportError:
+    _PCEO_AVAILABLE = False
+    PCEO_HTML = '<h1>nuevo_pceo.py no encontrado</h1>'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LANDING PAGE
+# ─────────────────────────────────────────────────────────────────────────────
+
+LANDING_HTML = r"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IAnus — Gestor de Horarios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;color:#1a2a3a;
+     min-height:100vh;display:flex;flex-direction:column}
+.top-bar{background:#1a3a6b;color:#fff;padding:18px 40px;display:flex;align-items:center;gap:16px}
+.top-bar img{height:72px;width:72px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.35);flex-shrink:0}
+.top-bar-text h1{font-size:1.4rem;font-weight:700;letter-spacing:.2px}
+.top-bar-text p{font-size:.88rem;opacity:.7;margin-top:3px}
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px}
+.cards{display:flex;gap:28px;flex-wrap:wrap;justify-content:center;max-width:780px;width:100%}
+.card{background:#fff;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.09);
+      padding:36px 32px;flex:1;min-width:280px;max-width:340px;
+      display:flex;flex-direction:column;align-items:center;text-align:center;
+      border:2.5px solid transparent;transition:all .2s;cursor:pointer;text-decoration:none;color:inherit}
+.card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.13)}
+.card-grado:hover{border-color:#1a3a6b}
+.card-pceo:hover{border-color:#6b1a3a}
+.card-icon{font-size:3rem;margin-bottom:16px;line-height:1}
+.card h2{font-size:1.15rem;font-weight:700;margin-bottom:8px}
+.card p{font-size:.84rem;color:#6a7a8a;line-height:1.55;margin-bottom:20px;flex:1}
+.card-btn{padding:10px 28px;border-radius:9px;font-size:.9rem;font-weight:700;
+          border:none;cursor:pointer;transition:background .15s;width:100%}
+.card-grado .card-btn{background:#1a3a6b;color:#fff}
+.card-grado .card-btn:hover{background:#2855a0}
+.card-pceo .card-btn{background:#6b1a3a;color:#fff}
+.card-pceo .card-btn:hover{background:#8b2a52}
+.footer{text-align:center;padding:16px;font-size:.76rem;color:#a0aab4}
+@media(max-width:560px){.cards{flex-direction:column;align-items:center}.card{max-width:100%}}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <img src="/api/logo_svg" alt="IAnus">
+  <div class="top-bar-text">
+    <h1>IAnus — Gestor de Horarios</h1>
+    <p>Asistente de configuración · UPCT</p>
+  </div>
+</div>
+
+<div class="main">
+  <div class="cards">
+
+    <a class="card card-grado" href="/nuevo">
+      <div class="card-icon">🎓</div>
+      <h2>Configurar Grado</h2>
+      <p>Crea un nuevo grado desde cero: estructura de cursos, franjas horarias, calendario académico, asignaturas e importación de Excel.</p>
+      <button class="card-btn" onclick="event.preventDefault();location.href='/nuevo'">Nuevo Grado →</button>
+    </a>
+
+    <a class="card card-pceo" href="/pceo">
+      <div class="card-icon">⭐</div>
+      <h2>Configurar Doble Grado</h2>
+      <p>Genera un Programa de Estudios Conjunto (PCEO) combinando asignaturas marcadas con ⭐ en dos grados ya existentes.</p>
+      <button class="card-btn" onclick="event.preventDefault();location.href='/pceo'">Nuevo Doble Grado →</button>
+    </a>
+
+  </div>
+</div>
+
+<div class="footer">IAnus · Gestor de Horarios UPCT</div>
+
+</body>
+</html>
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HTTP SERVER
 # ─────────────────────────────────────────────────────────────────────────────
 
 class WizardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        if self.path in ('/', '/nuevo'):
+        if self.path == '/':
+            self._html(LANDING_HTML)
+        elif self.path == '/nuevo':
             self._html(WIZARD_HTML)
+        elif self.path == '/pceo':
+            self._html(PCEO_HTML)
         elif self.path == '/api/ping':
             self._json({'ok': True})
         elif self.path == '/api/logo_svg':
             self._svg(BASE_DIR / 'docs' / 'logo_ianus.svg')
+        elif self.path == '/api/grados':
+            self._json(pceo_api_grados() if _PCEO_AVAILABLE else {'grados': []})
         else:
             self._404()
 
@@ -1462,6 +1569,12 @@ class WizardHandler(BaseHTTPRequestHandler):
         elif self.path == '/api/parse_excel':
             data = self._read_json()
             self._json(api_parse_excel(data))
+        elif self.path == '/api/leer_pceo' and _PCEO_AVAILABLE:
+            data = self._read_json()
+            self._json(pceo_api_leer_pceo(data))
+        elif self.path == '/api/crear_pceo' and _PCEO_AVAILABLE:
+            data = self._read_json()
+            self._json(pceo_api_crear_pceo(data))
         else:
             self._404()
 
@@ -1511,7 +1624,15 @@ class WizardHandler(BaseHTTPRequestHandler):
 
 def main():
     url = f'http://localhost:{PORT}'
-    print(f'Iniciando wizard en {url}')
+    print(f'')
+    print(f'  ╔══════════════════════════════════════════╗')
+    print(f'  ║   IAnus — Gestor de Horarios UPCT        ║')
+    print(f'  ║   {url:<40} ║')
+    print(f'  ╚══════════════════════════════════════════╝')
+    print(f'')
+    print(f'  Abre el navegador en {url}')
+    print(f'  Pulsa Ctrl+C para detener.')
+    print(f'')
     threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     HTTPServer.allow_reuse_address = True
     server = HTTPServer(('localhost', PORT), WizardHandler)

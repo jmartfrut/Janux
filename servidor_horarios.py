@@ -69,6 +69,22 @@ EXPORT_PREFIX    = _cfg("ui", "export_prefix",    default=DEGREE_ACRONYM)
 # Formato: {"1": ["PS5","PS6"], "2": ["PS7"], ...}
 AULAS_POR_CURSO = _cfg("degree_structure", "aulas_por_curso", default={})
 
+# Aulario por curso (para el desplegable de cursos — se inyectan como JSON)
+# Formato: {"1": "PS2", "2": "PS3", ...}
+AULARIO_POR_CURSO = _cfg("degree_structure", "aulario_por_curso", default={})
+
+# Generar las <option> del select de curso dinámicamente
+_num_cursos  = _cfg("degree_structure", "num_cursos", default=4)
+_ordinals_es = {1:'1er', 2:'2o', 3:'3er', 4:'4o'}
+def _curso_label(i):
+    ord_str = _ordinals_es.get(i, f'{i}o')
+    aulario = AULARIO_POR_CURSO.get(str(i), '')
+    label   = f'{ord_str} Curso'
+    if aulario:
+        label += f' ({aulario})'
+    return f'      <option value="{i}">{label}</option>'
+CURSO_OPTIONS = '\n'.join(_curso_label(i) for i in range(1, _num_cursos + 1))
+
 # Tipos de actividad (para getActType en JS — se inyectan como JSON)
 # Se filtran claves que empiezan por "_" (comentarios internos del JSON)
 _DEFAULT_ACT_TYPES = {
@@ -809,6 +825,47 @@ def api_db_backup(_data):
     return {"ok": True, "backup": backup_name, "path": backup_path}
 
 
+def api_db_checkpoint(_data):
+    """POST /api/db/checkpoint — fuerza WAL checkpoint para que el .db refleje todos los cambios."""
+    conn = get_db()
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL)")
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+def api_db_import(raw_bytes):
+    """POST /api/db/import — sustituye la base de datos activa por el fichero enviado."""
+    import shutil, datetime
+    if not raw_bytes:
+        return {"ok": False, "error": "No se recibieron datos"}
+    # Verificar magic bytes SQLite
+    if raw_bytes[:16] != b'SQLite format 3\x00':
+        return {"ok": False, "error": "El fichero no parece una base de datos SQLite válida"}
+    # Backup automático antes de sobrescribir
+    backup_dir = os.path.join(SCRIPT_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    db_basename = os.path.splitext(os.path.basename(DB_PATH))[0]
+    backup_path = os.path.join(backup_dir, f"{db_basename}_preimport_{ts}.db")
+    if os.path.exists(DB_PATH):
+        shutil.copy2(DB_PATH, backup_path)
+    # Escribir el nuevo fichero
+    with open(DB_PATH, "wb") as f:
+        f.write(raw_bytes)
+    # Eliminar WAL y SHM para evitar inconsistencias
+    for ext in ("-wal", "-shm"):
+        p = DB_PATH + ext
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+    return {"ok": True, "backup": os.path.basename(backup_path)}
+
+
 def api_toggle_destacada(data):
     """POST /api/destacada/toggle — añade o elimina un par (codigo, grupo_num) de asignaturas_destacadas."""
     codigo    = data.get("codigo", "").strip()
@@ -855,6 +912,7 @@ API_ROUTES = {
     "/api/finales/checklist":        ("GET",  api_get_finales_checklist),
     "/api/finales/checklist/toggle": ("POST", api_toggle_finales_checklist),
     "/api/db/backup":                ("POST", api_db_backup),
+    "/api/db/checkpoint":            ("POST", api_db_checkpoint),
     "/api/destacada/toggle":         ("POST", api_toggle_destacada),
 }
 
@@ -875,6 +933,8 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
             self.serve_logo()
         elif parsed.path == "/api/logo_svg":
             self.serve_logo_svg()
+        elif parsed.path == "/api/db/download":
+            self.serve_db_download()
         elif parsed.path in API_ROUTES and API_ROUTES[parsed.path][0] == "GET":
             params = parse_qs(parsed.query)
             result = API_ROUTES[parsed.path][1](params)
@@ -1040,9 +1100,43 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({"error": str(e), "trace": traceback.format_exc()}, 500)
 
+    def serve_db_download(self):
+        """GET /api/db/download — fuerza WAL checkpoint y sirve el .db como descarga binaria."""
+        import shutil, datetime
+        # Checkpoint para que el .db esté actualizado
+        conn = get_db()
+        try:
+            conn.execute("PRAGMA wal_checkpoint(FULL)")
+            conn.commit()
+        finally:
+            conn.close()
+        db_basename = os.path.splitext(os.path.basename(DB_PATH))[0]
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        suggested_name = f"{db_basename}_copia_{ts}.db"
+        try:
+            with open(DB_PATH, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{suggested_name}"')
+            self.send_header("Content-Length", len(data))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path in API_ROUTES and API_ROUTES[parsed.path][0] == "POST":
+        if parsed.path == "/api/db/import":
+            length = int(self.headers.get("Content-Length", 0))
+            raw_bytes = self.rfile.read(length)
+            try:
+                result = api_db_import(raw_bytes)
+                self.send_json(result)
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+        elif parsed.path in API_ROUTES and API_ROUTES[parsed.path][0] == "POST":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             data = json.loads(body) if body else {}
@@ -1101,7 +1195,9 @@ def generate_html():
             .replace('COLOR_BG_PLACEHOLDER',            COLOR_BG)
             .replace('DESTACADAS_BADGE_PLACEHOLDER',    DESTACADAS_BADGE)
             .replace('EXPORT_PREFIX_PLACEHOLDER',       EXPORT_PREFIX)
-            .replace('AULAS_POR_CURSO_PLACEHOLDER',     json.dumps(AULAS_POR_CURSO, ensure_ascii=False)))
+            .replace('AULAS_POR_CURSO_PLACEHOLDER',     json.dumps(AULAS_POR_CURSO, ensure_ascii=False))
+            .replace('AULARIO_POR_CURSO_PLACEHOLDER',  json.dumps(AULARIO_POR_CURSO, ensure_ascii=False))
+            .replace('CURSO_OPTIONS_PLACEHOLDER',       CURSO_OPTIONS))
 
 
 # ─── HTML ───
@@ -1521,7 +1617,10 @@ select:focus,input:focus{border-color:var(--primary-light)}
   </div>
   <div class="header-right">
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
-    <button class="btn btn-outline btn-sm" id="btnBackupDB" onclick="backupDB()" title="Fuerza WAL checkpoint y crea copia de seguridad en backups/">&#128190; Guardar copia</button>
+    <input type="file" id="importDBFile" accept=".db" style="display:none" onchange="importDBFileSelected(this)">
+    <button class="btn btn-outline btn-sm" id="btnImportDB" onclick="document.getElementById('importDBFile').click()" title="Sustituye la base de datos activa por un fichero .db seleccionado">&#128229; Importar</button>
+    <button class="btn btn-success btn-sm" id="btnSaveDB" onclick="saveDB()" title="Fuerza WAL checkpoint y sobreescribe la base de datos activa">&#128424; Guardar</button>
+    <button class="btn btn-outline btn-sm" id="btnBackupDB" onclick="backupDB()" title="Descarga una copia de la base de datos en la ubicación que elijas">&#128190; Guardar copia</button>
   </div>
 </header>
 
@@ -1529,10 +1628,7 @@ select:focus,input:focus{border-color:var(--primary-light)}
   <div class="toolbar-group">
     <label>Curso</label>
     <select id="cursoSelect" onchange="onFilterChange()">
-      <option value="1">1er Curso (PS2)</option>
-      <option value="2">2o Curso (PS3)</option>
-      <option value="3">3er Curso (PS4)</option>
-      <option value="4">4o Curso (PS5)</option>
+CURSO_OPTIONS_PLACEHOLDER
     </select>
   </div>
   <div class="toolbar-group">
@@ -1696,17 +1792,17 @@ async function api(path, body) {
   return res.json();
 }
 
-async function backupDB() {
-  const btn = document.getElementById('btnBackupDB');
+async function saveDB() {
+  const btn = document.getElementById('btnSaveDB');
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '&#9203; Guardando...';
   try {
-    const res = await api('/api/db/backup', {});
+    const res = await api('/api/db/checkpoint', {});
     if (res.ok) {
       btn.innerHTML = '&#10003; Guardado';
-      btn.style.background = 'rgba(39,174,96,.25)';
-      showToast('Copia guardada: backups/' + res.backup);
+      btn.style.background = 'rgba(39,174,96,.4)';
+      showToast('Base de datos guardada correctamente');
       setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
     } else {
       throw new Error(res.error || 'Error desconocido');
@@ -1715,6 +1811,107 @@ async function backupDB() {
     btn.innerHTML = '&#10007; Error';
     btn.style.background = 'rgba(231,76,60,.25)';
     showToast('Error al guardar: ' + e.message, true);
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+  }
+}
+
+async function backupDB() {
+  const btn = document.getElementById('btnBackupDB');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#9203; Preparando...';
+  try {
+    // Descargar la BD desde el servidor (ya hace checkpoint internamente)
+    const response = await fetch('/api/db/download');
+    if (!response.ok) throw new Error('Error al obtener la base de datos del servidor');
+    const blob = await response.blob();
+
+    // Obtener el nombre sugerido del header Content-Disposition
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const suggestedName = match ? match[1] : 'horarios_copia.db';
+
+    // Usar File System Access API para que el usuario elija dónde guardar
+    if (window.showSaveFilePicker) {
+      const fileHandle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: 'Base de datos SQLite', accept: { 'application/octet-stream': ['.db'] } }]
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      btn.innerHTML = '&#10003; Guardado';
+      btn.style.background = 'rgba(39,174,96,.25)';
+      showToast('Copia guardada correctamente');
+    } else {
+      // Fallback: descarga directa al directorio de descargas
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      a.click();
+      URL.revokeObjectURL(url);
+      btn.innerHTML = '&#10003; Descargado';
+      btn.style.background = 'rgba(39,174,96,.25)';
+      showToast('Copia descargada: ' + suggestedName);
+    }
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      // El usuario canceló el diálogo — no es un error
+      btn.innerHTML = orig;
+      btn.style.background = '';
+      btn.disabled = false;
+    } else {
+      btn.innerHTML = '&#10007; Error';
+      btn.style.background = 'rgba(231,76,60,.25)';
+      showToast('Error al guardar: ' + e.message, true);
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+    }
+  }
+}
+
+function importDBFileSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  input.value = ''; // reset para poder volver a seleccionar el mismo fichero
+  if (!confirm('¿Seguro que deseas sustituir la base de datos actual por "' + file.name + '"?\n\nSe creará una copia de seguridad automática antes de continuar.')) return;
+  importDB(file);
+}
+
+async function importDB(file) {
+  const btn = document.getElementById('btnImportDB');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#9203; Importando...';
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const res = await fetch('/api/db/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: arrayBuffer
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.innerHTML = '&#9203; Guardando...';
+      btn.style.background = 'rgba(39,174,96,.2)';
+      await api('/api/db/checkpoint', {});
+      btn.innerHTML = '&#10003; Importado';
+      btn.style.background = 'rgba(39,174,96,.4)';
+      showToast('Base de datos importada y guardada correctamente. Recargando datos...');
+      setTimeout(async () => {
+        btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false;
+        DB = await api('/api/schedule');
+        DB._overrideSet = new Set(DB.fichas_override || []);
+        render();
+      }, 2000);
+    } else {
+      throw new Error(data.error || 'Error desconocido');
+    }
+  } catch(e) {
+    btn.innerHTML = '&#10007; Error';
+    btn.style.background = 'rgba(231,76,60,.25)';
+    showToast('Error al importar: ' + e.message, true);
     setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
   }
 }
@@ -3744,10 +3941,12 @@ async function deleteSlot() {
 function getPrintInfo() {
   const g = getGrupo();
   const ordinals = {'1':'1er','2':'2o','3':'3er','4':'4o'};
-  const grupoLabel = currentGroup === 'unico' ? 'Grupo Unico' : 'Grupo ' + currentGroup;
-  const cuatLabel = currentCuat === '1C' ? '1er Cuatrimestre' : '2o Cuatrimestre';
-  const aulaLabel = g && g.aula ? ' — ' + formatAula(g.aula) : '';
-  return ordinals[currentCurso] + ' Curso DEGREE_ACRONYM_PLACEHOLDER · ' + cuatLabel + ' · ' + grupoLabel + aulaLabel;
+  const grupoLabel  = currentGroup === 'unico' ? 'Grupo Unico' : 'Grupo ' + currentGroup;
+  const cuatLabel   = currentCuat === '1C' ? '1er Cuatrimestre' : '2o Cuatrimestre';
+  const aulaLabel   = g && g.aula ? ' — ' + formatAula(g.aula) : '';
+  const aulario     = AULARIO_POR_CURSO[String(currentCurso)];
+  const aularioStr  = aulario ? ' (' + aulario + ')' : '';
+  return ordinals[currentCurso] + ' Curso' + aularioStr + ' DEGREE_ACRONYM_PLACEHOLDER · ' + cuatLabel + ' · ' + grupoLabel + aulaLabel;
 }
 
 // ─── PDF GENERATION (html2canvas + jsPDF, sin diálogo de impresora) ───
@@ -4160,6 +4359,7 @@ const DEGREE_ACRONYM      = 'DEGREE_ACRONYM_PLACEHOLDER';
 const INSTITUTION_ACRONYM = 'INSTITUTION_ACRONYM_PLACEHOLDER';
 const EXPORT_PREFIX       = 'EXPORT_PREFIX_PLACEHOLDER';
 const AULAS_POR_CURSO     = AULAS_POR_CURSO_PLACEHOLDER;
+const AULARIO_POR_CURSO   = AULARIO_POR_CURSO_PLACEHOLDER;
 
 // ─── INIT ───
 (async function() {

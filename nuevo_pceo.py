@@ -1,0 +1,1497 @@
+#!/usr/bin/env python3
+"""
+nuevo_pceo.py — Wizard para crear un grado PCEO combinando asignaturas destacadas
+                (marcadas con ⭐) de dos grados de origen existentes.
+
+Uso:
+    python3 nuevo_pceo.py
+    → Abre http://localhost:8092 con el asistente completo.
+
+Genera grados/<SIGLAS>/ con config.json, horarios.db y launchers.
+Las clases se copian semana a semana de las BDs de origen.
+"""
+
+import json
+import sqlite3
+import subprocess
+import sys
+import threading
+import traceback
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+PORT     = 8092
+BASE_DIR = Path(__file__).parent
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTML WIZARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+WIZARD_HTML = r"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nuevo Doble Grado — Gestor de Horarios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;color:#1a2a3a;min-height:100vh}
+.top-bar{background:#6b1a3a;color:#fff;padding:14px 32px;display:flex;align-items:center;gap:12px}
+.top-bar h1{font-size:1.15rem;font-weight:600;letter-spacing:.3px}
+.top-bar .sub{font-size:.82rem;opacity:.7;margin-top:1px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:0;padding:20px 24px 0;flex-wrap:wrap;row-gap:8px}
+.step{display:flex;align-items:center;gap:0}
+.step-circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;border:2px solid #c8d4e0;background:#fff;color:#8a9ab0;transition:all .2s;flex-shrink:0}
+.step-label{font-size:.72rem;color:#8a9ab0;margin:0 6px;white-space:nowrap;transition:color .2s}
+.step-line{width:28px;height:2px;background:#c8d4e0;transition:background .2s;flex-shrink:0}
+.step.active .step-circle{background:#6b1a3a;border-color:#6b1a3a;color:#fff}
+.step.active .step-label{color:#6b1a3a;font-weight:600}
+.step.done .step-circle{background:#22863a;border-color:#22863a;color:#fff}
+.step.done .step-label{color:#22863a}
+.step.done + .step-line,.step.active + .step-line{background:#6b1a3a}
+.card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.07);max-width:900px;margin:20px auto 40px;padding:32px 36px}
+.card h2{font-size:1.1rem;font-weight:700;color:#6b1a3a;margin-bottom:6px}
+.card .desc{font-size:.83rem;color:#6a7a8a;margin-bottom:24px}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:.8rem;font-weight:600;color:#3a4a5a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.field input[type=text],.field input[type=number],.field select{width:100%;padding:8px 11px;border:1px solid #c8d4e0;border-radius:7px;font-size:.9rem;background:#fff;color:#1a2a3a;transition:border .15s}
+.field input[type=color]{padding:4px;height:38px;cursor:pointer;width:100%;border:1px solid #c8d4e0;border-radius:7px}
+.field input:focus,.field select:focus{outline:none;border-color:#6b1a3a;box-shadow:0 0 0 3px rgba(107,26,58,.1)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px}
+.hint{font-size:.75rem;color:#8a9ab0;margin-top:4px}
+.sec-title{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9a3a6a;margin:22px 0 10px;padding-bottom:6px;border-bottom:1.5px solid #f0e0e8}
+.actions{display:flex;align-items:center;justify-content:space-between;margin-top:28px;gap:12px}
+.btn{padding:9px 22px;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:#6b1a3a;color:#fff}
+.btn-primary:hover{background:#8b2a52}
+.btn-secondary{background:#e8eef4;color:#3a4a5a}
+.btn-secondary:hover{background:#d0dae6}
+.btn-green{background:#22863a;color:#fff}
+.btn-green:hover{background:#196b2e}
+.btn-outline{background:#fff;color:#6b1a3a;border:1.5px solid #6b1a3a}
+.btn-outline:hover{background:#fdf0f4}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+/* Source cards */
+.source-card{border:2px solid #e0d0d8;border-radius:10px;padding:18px 20px;margin-bottom:16px;background:#fdf8fa}
+.source-card.loaded{border-color:#22863a;background:#f0fff4}
+.source-card h3{font-size:.9rem;font-weight:700;color:#6b1a3a;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.source-badge{font-size:.7rem;background:#6b1a3a;color:#fff;padding:2px 8px;border-radius:10px}
+.source-badge.b{background:#1a3a6b}
+/* Table */
+.tbl-wrap{overflow-x:auto;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{background:#f7f0f4;color:#5a3a4a;font-weight:600;padding:7px 10px;text-align:left;border-bottom:2px solid #e0d0d8;white-space:nowrap}
+td{padding:5px 7px;border-bottom:1px solid #f0e8ec;vertical-align:middle}
+td select,td input[type=number],td input[type=text]{width:100%;border:1px solid #dde5ee;border-radius:5px;padding:4px 7px;font-size:.82rem;background:#fff}
+td select:focus,td input:focus{outline:none;border-color:#6b1a3a}
+tr.conflict-row td{background:#fff3f5}
+.conflict-icon{color:#dc2626;font-size:.8rem;font-weight:700}
+.ok-icon{color:#22863a;font-size:.8rem}
+.src-tag{font-size:.68rem;font-weight:700;padding:2px 6px;border-radius:4px;display:inline-block}
+.src-tag-a{background:#fdf0f4;color:#6b1a3a;border:1px solid #e0b0c0}
+.src-tag-b{background:#f0f4fd;color:#1a3a6b;border:1px solid #b0c0e0}
+/* Console */
+#console-wrap{margin-top:16px;display:none}
+#console-out{background:#0d1117;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:.78rem;padding:14px 16px;border-radius:8px;max-height:320px;overflow-y:auto;white-space:pre-wrap;line-height:1.5}
+#console-out .ok{color:#56d364}
+#console-out .err{color:#f85149}
+#console-out .info{color:#58a6ff}
+#console-out .warn{color:#f5a623}
+.success-box{background:#f0fff4;border:1.5px solid #56d364;border-radius:10px;padding:20px 24px;text-align:center;margin-top:20px;display:none}
+.success-box h3{color:#22863a;font-size:1.1rem;margin-bottom:6px}
+.success-box p{font-size:.85rem;color:#3a5a3a}
+.conflict-banner{background:#fff3f5;border:1.5px solid #f5c0c8;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:.82rem;color:#7a1a2a;display:none}
+.conflict-banner strong{display:block;margin-bottom:4px}
+.summary-box{background:#fdf8fa;border:1.5px solid #e0d0d8;border-radius:9px;padding:14px 18px;font-size:.84rem;line-height:1.8;margin-bottom:16px}
+@media(max-width:600px){.row2,.row3,.row4{grid-template-columns:1fr}.stepper{justify-content:flex-start;overflow-x:auto}.step-line{width:16px}}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <img src="/api/logo_svg" alt="IAnus" style="height:64px;width:64px;border-radius:13px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.3)"/>
+  <div>
+    <div style="font-size:1.1rem;font-weight:700">Gestor de Horarios — Nuevo Doble Grado</div>
+    <div class="sub">Programa de Estudios Conjunto — asistente de configuración</div>
+  </div>
+</div>
+
+<!-- STEPPER -->
+<div class="stepper" id="stepper">
+  <div class="step active" data-step="1"><div class="step-circle">1</div><div class="step-label">Básico</div></div>
+  <div class="step-line"></div>
+  <div class="step" data-step="2"><div class="step-circle">2</div><div class="step-label">Grados origen</div></div>
+  <div class="step-line"></div>
+  <div class="step" data-step="3"><div class="step-circle">3</div><div class="step-label">Distribución</div></div>
+  <div class="step-line"></div>
+  <div class="step" data-step="4"><div class="step-circle">4</div><div class="step-label">Generar</div></div>
+</div>
+
+<!-- ══════ STEP 1: BÁSICO ══════ -->
+<div class="card" id="step1">
+  <h2>1 · Datos básicos del PCEO</h2>
+  <div class="desc">Identificación del nuevo grado conjunto y configuración del servidor.</div>
+
+  <div class="row2">
+    <div class="field">
+      <label>Nombre completo del PCEO</label>
+      <input type="text" id="b-nombre" placeholder="Doble Grado en Ingeniería Mecánica e Industrial">
+    </div>
+    <div class="field">
+      <label>Siglas / clave</label>
+      <input type="text" id="b-siglas" placeholder="PCEO" maxlength="10" style="text-transform:uppercase"
+             oninput="this.value=this.value.toUpperCase().replace(/\s/g,'')">
+      <div class="hint">Nombre de la carpeta en grados/</div>
+    </div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Institución</label>
+      <input type="text" id="b-inst" placeholder="Universidad Politécnica de Cartagena">
+    </div>
+    <div class="field">
+      <label>Siglas institución</label>
+      <input type="text" id="b-inst-siglas" placeholder="UPCT" maxlength="10">
+    </div>
+  </div>
+  <div class="row3">
+    <div class="field">
+      <label>Etiqueta de curso</label>
+      <input type="text" id="b-curso-label" placeholder="2025-2026">
+    </div>
+    <div class="field">
+      <label>Puerto del servidor</label>
+      <input type="number" id="b-port" value="8082" min="1024" max="65535">
+    </div>
+    <div class="field">
+      <label>Badge Doble Grado (etiqueta ⭐)</label>
+      <input type="text" id="b-badge" placeholder="ej. PCEO GIM+GIDI">
+      <div class="hint">Texto del badge en la interfaz</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <span></span>
+    <button class="btn btn-primary" onclick="goStep(2)">Siguiente →</button>
+  </div>
+</div>
+
+<!-- ══════ STEP 2: GRADOS ORIGEN ══════ -->
+<div class="card" id="step2" style="display:none">
+  <h2>2 · Grados de origen</h2>
+  <div class="desc">Selecciona los dos grados cuyas asignaturas marcadas con ⭐ formarán el PCEO. Pulsa <strong>Cargar</strong> para leer las asignaturas destacadas de cada BD.</div>
+
+  <!-- Grado A -->
+  <div class="source-card" id="card-a">
+    <h3>⭐ Grado A &nbsp;<span class="source-badge">origen A</span></h3>
+    <div class="row2">
+      <div class="field">
+        <label>Seleccionar grado disponible</label>
+        <select id="sel-a" onchange="fillDbPath('a')">
+          <option value="">— seleccionar —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Ruta a la base de datos</label>
+        <input type="text" id="db-a" placeholder="grados/GIM/horarios.db">
+        <div class="hint">Relativa a la carpeta del proyecto</div>
+      </div>
+    </div>
+    <button class="btn btn-outline" style="margin-top:4px" onclick="cargarFuente('a')">🔍 Cargar grado A</button>
+    <div id="preview-a" style="margin-top:10px;font-size:.82rem;color:#6a7a8a"></div>
+  </div>
+
+  <!-- Grado B -->
+  <div class="source-card" id="card-b">
+    <h3>⭐ Grado B &nbsp;<span class="source-badge b">origen B</span></h3>
+    <div class="row2">
+      <div class="field">
+        <label>Seleccionar grado disponible</label>
+        <select id="sel-b" onchange="fillDbPath('b')">
+          <option value="">— seleccionar —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Ruta a la base de datos</label>
+        <input type="text" id="db-b" placeholder="grados/GIDI/horarios.db">
+        <div class="hint">Relativa a la carpeta del proyecto</div>
+      </div>
+    </div>
+    <button class="btn btn-outline" style="margin-top:4px" onclick="cargarFuente('b')">🔍 Cargar grado B</button>
+    <div id="preview-b" style="margin-top:10px;font-size:.82rem;color:#6a7a8a"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="goStep(1)">← Anterior</button>
+    <button class="btn btn-primary" onclick="validateFuentes()">Siguiente →</button>
+  </div>
+</div>
+
+<!-- ══════ STEP 3: DISTRIBUCIÓN ══════ -->
+<div class="card" id="step3" style="display:none">
+  <h2>3 · Distribución de asignaturas por curso</h2>
+  <div class="desc">Asigna a cada asignatura PCEO el curso y cuatrimestre en el nuevo grado. Mismo formato que el CSV de grado convencional. Las filas con ⚠️ indican solapamiento horario.</div>
+
+  <div id="conflict-banner" class="conflict-banner"></div>
+
+  <div class="tbl-wrap" style="margin-top:12px">
+    <table id="dist-table">
+      <thead>
+        <tr>
+          <th>Origen</th>
+          <th>Código</th>
+          <th>Nombre asignatura</th>
+          <th>Curso origen</th>
+          <th>Cuat. origen</th>
+          <th style="min-width:90px">Curso PCEO ↓</th>
+          <th style="min-width:90px">Cuat. PCEO ↓</th>
+          <th>Créditos</th>
+          <th>AF1</th>
+          <th>AF2</th>
+          <th>AF4</th>
+          <th style="width:30px"></th>
+        </tr>
+      </thead>
+      <tbody id="dist-tbody"></tbody>
+    </table>
+  </div>
+  <div style="margin-top:8px;font-size:.76rem;color:#8a9ab0">
+    Los valores de Créditos/AF1/AF2/AF4 se heredan automáticamente de las fichas de origen.
+    Puedes editarlos si lo necesitas.
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="goStep(2)">← Anterior</button>
+    <button class="btn btn-primary" onclick="goStep(4)">Siguiente →</button>
+  </div>
+</div>
+
+<!-- ══════ STEP 4: APARIENCIA + GENERAR ══════ -->
+<div class="card" id="step4" style="display:none">
+  <h2>4 · Apariencia y generación</h2>
+  <div class="desc">Personaliza los colores del grado PCEO y genera el proyecto.</div>
+
+  <div class="sec-title">Colores de la interfaz</div>
+  <div class="row4">
+    <div class="field">
+      <label>Color primario</label>
+      <input type="color" id="ap-primary" value="#6b1a3a">
+    </div>
+    <div class="field">
+      <label>Primario hover</label>
+      <input type="color" id="ap-primary-light" value="#8b2a52">
+    </div>
+    <div class="field">
+      <label>Acento</label>
+      <input type="color" id="ap-accent" value="#e8a020">
+    </div>
+    <div class="field">
+      <label>Fondo</label>
+      <input type="color" id="ap-bg" value="#f0f4f8">
+    </div>
+  </div>
+
+  <div class="sec-title">Resumen</div>
+  <div class="summary-box" id="summary-box">—</div>
+
+  <div id="console-wrap">
+    <div style="font-size:.78rem;font-weight:600;color:#5a6a7a;margin-bottom:6px">Salida del proceso:</div>
+    <div id="console-out"></div>
+  </div>
+
+  <div class="success-box" id="success-box">
+    <h3>✅ PCEO creado correctamente</h3>
+    <p id="success-path"></p>
+    <p style="margin-top:6px">Usa el launcher generado para arrancar el servidor.</p>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="goStep(3)">← Anterior</button>
+    <button class="btn btn-green" id="btn-generate" onclick="generarPceo()">⚡ Generar PCEO</button>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let fuenteData = { a: null, b: null };  // {asignaturas: [...], grado_nombre, db_path}
+let gradosDisponibles = [];
+
+// ─── STEPS ───────────────────────────────────────────────────────────────────
+function goStep(n) {
+  document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
+  document.getElementById('step' + n).style.display = '';
+  document.querySelectorAll('.step').forEach(s => {
+    const sn = parseInt(s.dataset.step);
+    s.classList.toggle('active', sn === n);
+    s.classList.toggle('done', sn < n);
+  });
+  if (n === 3) buildDistTable();
+  if (n === 4) buildSummary();
+}
+
+// ─── CARGAR GRADOS DISPONIBLES ───────────────────────────────────────────────
+async function loadGrados() {
+  try {
+    const r = await fetch('/api/grados');
+    const res = await r.json();
+    gradosDisponibles = res.grados || [];
+    ['a', 'b'].forEach(k => {
+      const sel = document.getElementById('sel-' + k);
+      gradosDisponibles.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g.db_path;
+        opt.textContent = `${g.siglas} — ${g.nombre} (${g.db_path})`;
+        sel.appendChild(opt);
+      });
+    });
+  } catch(e) { console.warn('No se pudo cargar lista de grados:', e); }
+}
+
+function fillDbPath(k) {
+  const sel = document.getElementById('sel-' + k);
+  const db  = document.getElementById('db-' + k);
+  if (sel.value) db.value = sel.value;
+}
+
+// ─── CARGAR FUENTE ────────────────────────────────────────────────────────────
+async function cargarFuente(k) {
+  const db_path = document.getElementById('db-' + k).value.trim();
+  if (!db_path) { alert('Introduce la ruta de la base de datos.'); return; }
+  const prev = document.getElementById('preview-' + k);
+  prev.innerHTML = '<em>Cargando…</em>';
+  try {
+    const r = await fetch('/api/leer_pceo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({db_path})
+    });
+    const res = await r.json();
+    if (!res.ok) {
+      prev.innerHTML = `<span style="color:#c0392b">❌ ${res.error}</span>`;
+      return;
+    }
+    fuenteData[k] = {db_path, ...res};
+    const n = (res.asignaturas || []).length;
+    prev.innerHTML = `<span style="color:#22863a">✅ ${res.grado_nombre || db_path} — <strong>${n} asignatura${n!==1?'s':''} PCEO</strong></span>`;
+    document.getElementById('card-' + k).classList.add('loaded');
+  } catch(e) {
+    prev.innerHTML = `<span style="color:#c0392b">❌ Error: ${e.message}</span>`;
+  }
+}
+
+function validateFuentes() {
+  if (!fuenteData.a) { alert('Carga el Grado A antes de continuar.'); return; }
+  if (!fuenteData.b) { alert('Carga el Grado B antes de continuar.'); return; }
+  if (!fuenteData.a.asignaturas?.length && !fuenteData.b.asignaturas?.length) {
+    if (!confirm('No se encontraron asignaturas PCEO en ninguna fuente. ¿Continuar igualmente?')) return;
+  }
+  goStep(3);
+}
+
+// ─── TABLA DE DISTRIBUCIÓN ───────────────────────────────────────────────────
+function buildDistTable() {
+  const tbody = document.getElementById('dist-tbody');
+  // Preserve existing edits
+  const existing = {};
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const cod = tr.dataset.codigo;
+    if (cod) existing[cod] = {
+      curso: tr.querySelector('.curso-pceo')?.value,
+      cuat:  tr.querySelector('.cuat-pceo')?.value,
+      cred:  tr.querySelector('.cred-v')?.value,
+      af1:   tr.querySelector('.af1-v')?.value,
+      af2:   tr.querySelector('.af2-v')?.value,
+      af4:   tr.querySelector('.af4-v')?.value,
+    };
+  });
+
+  const rows = [];
+  (fuenteData.a?.asignaturas || []).forEach(a => rows.push({...a, fuente:'a', fuente_label:'A'}));
+  (fuenteData.b?.asignaturas || []).forEach(a => rows.push({...a, fuente:'b', fuente_label:'B'}));
+
+  tbody.innerHTML = '';
+  rows.forEach(a => {
+    const prev = existing[a.codigo] || {};
+    const tr = document.createElement('tr');
+    tr.dataset.codigo = a.codigo;
+    tr.dataset.fuente = a.fuente;
+    tr.dataset.grupo_num = a.grupo_num || '';
+    tr.innerHTML = `
+      <td><span class="src-tag src-tag-${a.fuente}">${a.fuente_label}</span></td>
+      <td style="font-family:monospace;font-size:.78rem">${esc(a.codigo)}</td>
+      <td>${esc(a.nombre)}</td>
+      <td style="text-align:center">${a.curso_origen||'?'}</td>
+      <td style="text-align:center">${a.cuatrimestre_origen||'?'}</td>
+      <td><select class="curso-pceo" onchange="checkConflicts()">
+        ${[1,2,3,4,5,6].map(n=>`<option value="${n}"${(prev.curso||a.curso_origen||'1')==n?' selected':''}>${n}º</option>`).join('')}
+      </select></td>
+      <td><select class="cuat-pceo" onchange="checkConflicts()">
+        <option value="1C"${(prev.cuat||a.cuatrimestre_origen||'1C')==='1C'?' selected':''}>1C</option>
+        <option value="2C"${(prev.cuat||a.cuatrimestre_origen||'1C')==='2C'?' selected':''}>2C</option>
+      </select></td>
+      <td><input type="number" class="cred-v" value="${prev.cred??a.creditos??6}" min="0" step="0.5" style="width:58px"></td>
+      <td><input type="number" class="af1-v" value="${prev.af1??a.af1??0}" min="0" style="width:48px"></td>
+      <td><input type="number" class="af2-v" value="${prev.af2??a.af2??0}" min="0" style="width:48px"></td>
+      <td><input type="number" class="af4-v" value="${prev.af4??a.af4??0}" min="0" style="width:48px"></td>
+      <td class="conf-cell"></td>`;
+    tbody.appendChild(tr);
+  });
+  checkConflicts();
+}
+
+function getDistribucion() {
+  const rows = [];
+  document.querySelectorAll('#dist-tbody tr').forEach(tr => {
+    rows.push({
+      codigo:       tr.dataset.codigo,
+      fuente:       tr.dataset.fuente,
+      grupo_num:    tr.dataset.grupo_num,
+      nombre:       tr.querySelector('td:nth-child(3)').textContent,
+      curso_pceo:   parseInt(tr.querySelector('.curso-pceo').value),
+      cuatrimestre: tr.querySelector('.cuat-pceo').value,
+      creditos:     parseFloat(tr.querySelector('.cred-v').value)||0,
+      af1:          parseInt(tr.querySelector('.af1-v').value)||0,
+      af2:          parseInt(tr.querySelector('.af2-v').value)||0,
+      af4:          parseInt(tr.querySelector('.af4-v').value)||0,
+    });
+  });
+  return rows;
+}
+
+// ─── DETECCIÓN DE CONFLICTOS (cliente) ────────────────────────────────────────
+function checkConflicts() {
+  // Agrupa por (curso_pceo, cuatrimestre) y detecta si hay asigs de A y B
+  // con solapamiento en el slot_schedule cargado del servidor
+  const dist = getDistribucion();
+  const conflictCodigos = new Set();
+
+  // Agrupar slots por (curso, cuat)
+  const slotMap = {};  // "curso_cuat" -> {slot_key -> [codigo, ...]}
+  dist.forEach(d => {
+    const key = `${d.curso_pceo}_${d.cuatrimestre}`;
+    if (!slotMap[key]) slotMap[key] = {};
+    const sched = getSchedule(d.codigo, d.fuente);
+    sched.forEach(s => {
+      const sk = `${s.sem}_${s.dia}_${s.fr}`;
+      if (!slotMap[key][sk]) slotMap[key][sk] = [];
+      slotMap[key][sk].push(d.codigo);
+    });
+  });
+
+  // Detectar solapamientos
+  Object.values(slotMap).forEach(slots => {
+    Object.values(slots).forEach(codigos => {
+      if (codigos.length > 1) codigos.forEach(c => conflictCodigos.add(c));
+    });
+  });
+
+  let nConflicts = 0;
+  document.querySelectorAll('#dist-tbody tr').forEach(tr => {
+    const hasConflict = conflictCodigos.has(tr.dataset.codigo);
+    tr.classList.toggle('conflict-row', hasConflict);
+    tr.querySelector('.conf-cell').innerHTML = hasConflict
+      ? '<span class="conflict-icon" title="Solapamiento horario con otra asignatura en el mismo slot">⚠️</span>'
+      : '<span class="ok-icon">✓</span>';
+    if (hasConflict) nConflicts++;
+  });
+
+  const banner = document.getElementById('conflict-banner');
+  if (nConflicts > 0) {
+    banner.style.display = '';
+    banner.innerHTML = `<strong>⚠️ ${nConflicts} asignatura${nConflicts!==1?'s':''} con solapamiento horario</strong>
+      Las filas marcadas en rojo comparten alguna franja con otra asignatura del mismo curso/cuatrimestre PCEO.
+      El grado se generará igualmente; los conflictos quedarán registrados en la consola.`;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function getSchedule(codigo, fuente) {
+  const data = fuenteData[fuente];
+  if (!data?.schedules) return [];
+  return data.schedules[codigo] || [];
+}
+
+// ─── RESUMEN ─────────────────────────────────────────────────────────────────
+function buildSummary() {
+  const b = getBasico();
+  const dist = getDistribucion();
+  const nA = dist.filter(d => d.fuente === 'a').length;
+  const nB = dist.filter(d => d.fuente === 'b').length;
+  const cursos = [...new Set(dist.map(d => d.curso_pceo))].sort();
+  document.getElementById('summary-box').innerHTML = `
+    <b>Grado PCEO:</b> ${b.nombre} (${b.siglas})<br>
+    <b>Institución:</b> ${b.institucion} (${b.siglas_inst})<br>
+    <b>Curso:</b> ${b.curso_label} · Puerto: ${b.puerto}<br>
+    <b>Fuente A:</b> ${fuenteData.a?.grado_nombre||'—'} — ${nA} asignaturas<br>
+    <b>Fuente B:</b> ${fuenteData.b?.grado_nombre||'—'} — ${nB} asignaturas<br>
+    <b>Total asignaturas:</b> ${dist.length} · Cursos PCEO: ${cursos.join(', ')||'—'}<br>
+    <b>Carpeta destino:</b> grados/${b.siglas}/
+  `;
+}
+
+// ─── GETTERS ─────────────────────────────────────────────────────────────────
+function getBasico() {
+  return {
+    nombre:      document.getElementById('b-nombre').value,
+    siglas:      document.getElementById('b-siglas').value.toUpperCase(),
+    institucion: document.getElementById('b-inst').value,
+    siglas_inst: document.getElementById('b-inst-siglas').value,
+    curso_label: document.getElementById('b-curso-label').value,
+    puerto:      document.getElementById('b-port').value || '8082',
+    badge:       document.getElementById('b-badge').value,
+  };
+}
+
+function getApariencia() {
+  return {
+    primary:       document.getElementById('ap-primary').value,
+    primary_light: document.getElementById('ap-primary-light').value,
+    accent:        document.getElementById('ap-accent').value,
+    bg:            document.getElementById('ap-bg').value,
+  };
+}
+
+// ─── GENERAR ─────────────────────────────────────────────────────────────────
+async function generarPceo() {
+  const btn = document.getElementById('btn-generate');
+  btn.disabled = true; btn.textContent = '⏳ Generando…';
+  document.getElementById('console-wrap').style.display = 'block';
+  document.getElementById('console-out').innerHTML = '';
+  document.getElementById('success-box').style.display = 'none';
+
+  consoleLog('Enviando datos al servidor…', 'info');
+
+  const payload = {
+    basico:       getBasico(),
+    apariencia:   getApariencia(),
+    fuentes:      [
+      {db_path: fuenteData.a.db_path, grado_nombre: fuenteData.a.grado_nombre || 'A'},
+      {db_path: fuenteData.b.db_path, grado_nombre: fuenteData.b.grado_nombre || 'B'},
+    ],
+    distribucion: getDistribucion(),
+  };
+
+  try {
+    const r = await fetch('/api/crear_pceo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const res = await r.json();
+    if (res.output) {
+      res.output.split('\n').forEach(l =>
+        consoleLog(l, l.includes('✅')?'ok': l.includes('ERROR')||l.includes('Error')?'err':
+                      l.includes('⚠️')?'warn':''));
+    }
+    if (res.error) res.error.split('\n').filter(Boolean).forEach(l => consoleLog(l, 'err'));
+    if (res.traceback) res.traceback.split('\n').forEach(l => consoleLog(l, 'err'));
+    if (res.ok) {
+      consoleLog('\n✅ PCEO creado correctamente.', 'ok');
+      const sb = document.getElementById('success-box');
+      sb.style.display = 'block';
+      document.getElementById('success-path').textContent = 'Carpeta: ' + (res.grado_dir || 'grados/' + getBasico().siglas);
+    } else {
+      consoleLog('\n❌ Se produjeron errores. Revisa la salida.', 'err');
+    }
+  } catch(e) {
+    consoleLog('Error de conexión: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '⚡ Generar PCEO';
+  }
+}
+
+function consoleLog(text, cls) {
+  const box = document.getElementById('console-out');
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = text + '\n';
+  box.appendChild(span);
+  box.scrollTop = box.scrollHeight;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadGrados();
+</script>
+</body>
+</html>
+"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BACKEND — FUNCIONES DE DATOS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def resolve_db_path(db_path_str):
+    """Convierte una ruta relativa o absoluta a Path absoluta."""
+    p = Path(db_path_str)
+    if not p.is_absolute():
+        p = BASE_DIR / p
+    return p
+
+
+def api_grados(_=None):
+    """Lista los grados disponibles en grados/."""
+    grados_dir = BASE_DIR / 'grados'
+    result = []
+    if not grados_dir.exists():
+        return {'grados': []}
+    for subdir in sorted(grados_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+        cfg_path = subdir / 'config.json'
+        if not cfg_path.exists():
+            continue
+        try:
+            with open(cfg_path, encoding='utf-8') as f:
+                cfg = json.load(f)
+            db_name = cfg.get('server', {}).get('db_name', 'horarios.db')
+            db_path = subdir / db_name
+            if db_path.exists():
+                result.append({
+                    'siglas':    cfg.get('degree', {}).get('acronym', subdir.name),
+                    'nombre':    cfg.get('degree', {}).get('name', subdir.name),
+                    'db_path':   str(db_path.relative_to(BASE_DIR)),
+                    'curso':     cfg.get('server', {}).get('curso_label', ''),
+                })
+        except Exception:
+            pass
+    return {'grados': result}
+
+
+def api_leer_pceo(data):
+    """
+    Lee las asignaturas marcadas como PCEO (asignaturas_destacadas) de una BD.
+    Devuelve también el schedule comprimido de cada asignatura para conflict detection.
+    """
+    db_path_str = data.get('db_path', '')
+    if not db_path_str:
+        return {'ok': False, 'error': 'db_path vacío.'}
+
+    db_path = resolve_db_path(db_path_str)
+    if not db_path.exists():
+        return {'ok': False, 'error': f'No se encuentra: {db_path}'}
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+
+        # Verificar que existe la tabla
+        has_dest = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'"
+        ).fetchone()
+        if not has_dest:
+            conn.close()
+            return {'ok': False, 'error': 'La BD no tiene tabla asignaturas_destacadas. '
+                    'Abre el grado y marca asignaturas con ⭐ primero.'}
+
+        # Detectar si asignaturas tiene columnas curso/cuatrimestre (rebuild_db no las tiene)
+        asig_cols = [r[1] for r in conn.execute("PRAGMA table_info(asignaturas)").fetchall()]
+        has_curso_col = 'curso' in asig_cols
+
+        if has_curso_col:
+            curso_select = "a.curso AS curso_origen, a.cuatrimestre AS cuatrimestre_origen,"
+            order_by = "ORDER BY a.curso, a.cuatrimestre, a.nombre"
+        else:
+            # Inferir curso/cuatrimestre desde el grupo_num (clave del grupo)
+            # La clave tiene formato "N_XC_grupo_..." donde N=curso, XC=cuatrimestre
+            curso_select = "NULL AS curso_origen, NULL AS cuatrimestre_origen,"
+            order_by = "ORDER BY a.nombre"
+
+        rows = conn.execute(f"""
+            SELECT DISTINCT a.codigo, a.nombre,
+                   {curso_select}
+                   d.grupo_num,
+                   COALESCE(f.creditos, 6.0) AS creditos,
+                   COALESCE(f.af1, 0) AS af1,
+                   COALESCE(f.af2, 0) AS af2,
+                   COALESCE(f.af4, 0) AS af4,
+                   COALESCE(f.af5, 0) AS af5,
+                   COALESCE(f.af6, 0) AS af6
+            FROM asignaturas_destacadas d
+            JOIN asignaturas a ON a.codigo = d.codigo
+            LEFT JOIN fichas f ON f.asignatura_id = a.id
+            {order_by}
+        """).fetchall()
+
+        asignaturas = [dict(r) for r in rows]
+
+        # Para cada asignatura: inferir curso/cuatrimestre y grupo desde las clases reales
+        # (más robusto que depender del valor grupo_num almacenado, que puede ser solo un número)
+        def find_main_grupo(codigo_asig):
+            """Devuelve (grupo_id, curso, cuatrimestre) del grupo con más clases para esta asig."""
+            r = conn.execute("""
+                SELECT g.id, g.curso, g.cuatrimestre, COUNT(*) AS cnt
+                FROM clases c
+                JOIN asignaturas a ON a.id = c.asignatura_id
+                JOIN semanas s ON s.id = c.semana_id
+                JOIN grupos g ON g.id = s.grupo_id
+                WHERE a.codigo = ? AND c.es_no_lectivo = 0
+                GROUP BY g.id ORDER BY cnt DESC LIMIT 1
+            """, (codigo_asig,)).fetchone()
+            return r  # (grupo_id, curso, cuatrimestre, cnt) or None
+
+        if not has_curso_col:
+            for asig in asignaturas:
+                g = find_main_grupo(asig['codigo'])
+                if g:
+                    asig['curso_origen']        = g[1]
+                    asig['cuatrimestre_origen']  = g[2]
+                    asig['_grupo_id_origen']     = g[0]
+                else:
+                    asig['curso_origen']        = None
+                    asig['cuatrimestre_origen']  = None
+                    asig['_grupo_id_origen']     = None
+        else:
+            for asig in asignaturas:
+                g = find_main_grupo(asig['codigo'])
+                asig['_grupo_id_origen'] = g[0] if g else None
+
+        # Leer schedules comprimidos para conflict detection en el cliente
+        schedules = {}
+        for asig in asignaturas:
+            codigo   = asig['codigo']
+            grupo_id = asig.get('_grupo_id_origen')
+            if not grupo_id:
+                schedules[codigo] = []
+                continue
+            clases = conn.execute("""
+                SELECT s.numero AS sem, c.dia, c.franja_id AS fr
+                FROM clases c
+                JOIN semanas s ON s.id = c.semana_id
+                JOIN asignaturas a ON a.id = c.asignatura_id
+                WHERE s.grupo_id = ? AND a.codigo = ? AND c.es_no_lectivo = 0
+            """, (grupo_id, codigo)).fetchall()
+            schedules[codigo] = [{'sem': r[0], 'dia': r[1], 'fr': r[2]} for r in clases]
+
+        # Nombre del grado (para mostrar en preview)
+        grado_nombre = db_path_str  # fallback
+        cfg_path = db_path.parent / 'config.json'
+        if cfg_path.exists():
+            try:
+                with open(cfg_path, encoding='utf-8') as f:
+                    cfg = json.load(f)
+                grado_nombre = cfg.get('degree', {}).get('name', db_path_str)
+            except Exception:
+                pass
+
+        conn.close()
+        return {
+            'ok':           True,
+            'asignaturas':  asignaturas,
+            'schedules':    schedules,
+            'grado_nombre': grado_nombre,
+        }
+
+    except Exception:
+        return {'ok': False, 'error': traceback.format_exc()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GENERACIÓN DE LA BD PCEO
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_tables_pceo(conn):
+    """Crea el esquema completo (igual que setup_grado)."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS asignaturas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT NOT NULL, nombre TEXT NOT NULL,
+            curso INTEGER DEFAULT NULL, cuatrimestre TEXT DEFAULT NULL
+        );
+        CREATE TABLE IF NOT EXISTS grupos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            curso INTEGER, cuatrimestre TEXT, grupo TEXT,
+            aula TEXT DEFAULT '', clave TEXT
+        );
+        CREATE TABLE IF NOT EXISTS franjas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT, orden INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS semanas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            grupo_id INTEGER REFERENCES grupos(id),
+            numero INTEGER, descripcion TEXT
+        );
+        CREATE TABLE IF NOT EXISTS clases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            semana_id INTEGER REFERENCES semanas(id),
+            dia TEXT, franja_id INTEGER REFERENCES franjas(id),
+            asignatura_id INTEGER REFERENCES asignaturas(id),
+            aula TEXT DEFAULT '', subgrupo TEXT DEFAULT '',
+            observacion TEXT DEFAULT '', es_no_lectivo INTEGER DEFAULT 0,
+            contenido TEXT DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS fichas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asignatura_id INTEGER NOT NULL UNIQUE REFERENCES asignaturas(id) ON DELETE CASCADE,
+            creditos REAL DEFAULT 0, af1 INTEGER DEFAULT 0, af2 INTEGER DEFAULT 0,
+            af4 INTEGER DEFAULT 0, af5 INTEGER DEFAULT 0, af6 INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS festivos_calendario (
+            fecha TEXT PRIMARY KEY, tipo TEXT DEFAULT 'no_lectivo', descripcion TEXT DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS fichas_override (
+            codigo TEXT NOT NULL, grupo_key TEXT NOT NULL DEFAULT '',
+            motivo TEXT DEFAULT '', ts TEXT DEFAULT '',
+            PRIMARY KEY (codigo, grupo_key)
+        );
+        CREATE TABLE IF NOT EXISTS finales_excluidas (
+            periodo TEXT NOT NULL, curso TEXT NOT NULL, asig_codigo TEXT NOT NULL,
+            asig_nombre TEXT DEFAULT '',
+            PRIMARY KEY (periodo, curso, asig_codigo)
+        );
+        CREATE TABLE IF NOT EXISTS examenes_finales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT NOT NULL, curso TEXT NOT NULL, asig_nombre TEXT DEFAULT '',
+            asig_codigo TEXT DEFAULT '', turno TEXT DEFAULT 'mañana',
+            observacion TEXT DEFAULT '', auto_generated INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS asignaturas_destacadas (
+            codigo TEXT NOT NULL, grupo_num TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (codigo, grupo_num)
+        );
+    """)
+    conn.commit()
+
+
+def generar_pceo_db(pceo_conn, src_conns, distribucion, log):
+    """
+    Genera la BD PCEO copiando clases de las BDs de origen.
+    src_conns: [conn_a, conn_b]
+    distribucion: [{codigo, fuente ('a'/'b'), grupo_num, nombre, curso_pceo,
+                    cuatrimestre, creditos, af1, af2, af4}, ...]
+    log: función log(msg, tipo)
+    Devuelve lista de conflictos detectados.
+    """
+    fuente_idx = {'a': 0, 'b': 1}
+
+    # 1. Franjas (de la fuente A)
+    src_franjas = src_conns[0].execute(
+        "SELECT label, orden FROM franjas ORDER BY orden"
+    ).fetchall()
+    for label, orden in src_franjas:
+        pceo_conn.execute(
+            "INSERT INTO franjas (label, orden) VALUES (?,?)", (label, orden)
+        )
+    pceo_conn.commit()
+    log(f'  ✅ {len(src_franjas)} franjas copiadas de la fuente A', 'ok')
+
+    # Mapa orden→id en la nueva BD
+    new_franjas = pceo_conn.execute("SELECT id, orden FROM franjas").fetchall()
+    orden_to_new_id = {orden: fid for fid, orden in new_franjas}
+
+    # Mapa franja_id_src→new_franja_id para cada fuente
+    franja_maps = []
+    for i, src_conn in enumerate(src_conns):
+        sf = src_conn.execute("SELECT id, orden FROM franjas").fetchall()
+        franja_maps.append({sid: orden_to_new_id.get(orden, sid) for sid, orden in sf})
+
+    # 2. Determinar (curso, cuatrimestre) únicos del PCEO
+    cuats_por_curso = {}
+    for d in distribucion:
+        c = int(d['curso_pceo'])
+        q = d['cuatrimestre']
+        cuats_por_curso.setdefault(c, set()).add(q)
+
+    # 3. Crear grupos (uno por curso/cuatrimestre)
+    grupo_id_map = {}  # (curso, cuat) → pceo_grupo_id
+    for curso in sorted(cuats_por_curso.keys()):
+        for cuat in sorted(cuats_por_curso[curso]):
+            clave = f"{curso}_{cuat}_grupo_unico"
+            cur = pceo_conn.execute(
+                "INSERT INTO grupos (curso, cuatrimestre, grupo, aula, clave) VALUES (?,?,?,?,?)",
+                (curso, cuat, 'unico', '', clave)
+            )
+            grupo_id_map[(curso, cuat)] = cur.lastrowid
+    pceo_conn.commit()
+    log(f'  ✅ {len(grupo_id_map)} grupos PCEO creados', 'ok')
+
+    # 4. Copiar semanas desde la primera asignatura disponible de cada (curso, cuat)
+    semana_map = {}  # (pceo_grupo_id, semana_num) → pceo_semana_id
+    for (curso, cuat), pceo_grupo_id in grupo_id_map.items():
+        # Encontrar fuente para este (curso, cuat)
+        src_conn = None
+        src_grupo_clave = None
+        for d in distribucion:
+            if int(d['curso_pceo']) == curso and d['cuatrimestre'] == cuat:
+                src_conn = src_conns[fuente_idx[d['fuente']]]
+                src_grupo_clave = d.get('grupo_num', '')
+                break
+
+        if src_conn is None:
+            continue
+
+        # Buscar el grupo fuente con más clases del cuatrimestre indicado
+        # Primero intentar por clave exacta, luego por el que tiene más clases de ese cuatrimestre
+        src_grupo = None
+        if src_grupo_clave:
+            src_grupo = src_conn.execute(
+                "SELECT id FROM grupos WHERE clave = ?", (src_grupo_clave,)
+            ).fetchone()
+        if not src_grupo:
+            # Grupo con más clases en ese cuatrimestre (representativo)
+            src_grupo = src_conn.execute("""
+                SELECT g.id FROM grupos g
+                JOIN semanas s ON s.grupo_id = g.id
+                JOIN clases c ON c.semana_id = s.id
+                WHERE g.cuatrimestre = ?
+                GROUP BY g.id ORDER BY COUNT(*) DESC LIMIT 1
+            """, (cuat,)).fetchone()
+        if not src_grupo:
+            log(f'  ⚠️ No se encontró grupo para curso {curso} {cuat} en fuente', 'warn')
+            continue
+
+        src_grupo_id = src_grupo[0]
+        semanas = src_conn.execute(
+            "SELECT numero, descripcion FROM semanas WHERE grupo_id = ? ORDER BY numero",
+            (src_grupo_id,)
+        ).fetchall()
+
+        for sem_num, sem_desc in semanas:
+            cur = pceo_conn.execute(
+                "INSERT INTO semanas (grupo_id, numero, descripcion) VALUES (?,?,?)",
+                (pceo_grupo_id, sem_num, sem_desc)
+            )
+            semana_map[(pceo_grupo_id, sem_num)] = cur.lastrowid
+
+        log(f'  ✅ {len(semanas)} semanas copiadas para curso {curso} {cuat}', 'ok')
+
+    pceo_conn.commit()
+
+    # 5. Copiar festivos del calendario de fuente A
+    try:
+        fest = src_conns[0].execute(
+            "SELECT fecha, tipo, descripcion FROM festivos_calendario"
+        ).fetchall()
+        for row in fest:
+            pceo_conn.execute(
+                "INSERT OR IGNORE INTO festivos_calendario (fecha, tipo, descripcion) VALUES (?,?,?)",
+                row
+            )
+        pceo_conn.commit()
+        if fest:
+            log(f'  ✅ {len(fest)} festivos de calendario copiados', 'ok')
+    except Exception:
+        pass  # tabla puede no existir en fuente
+
+    # 6. Insertar asignaturas y fichas
+    asig_id_map = {}  # codigo → new asig_id
+    for d in distribucion:
+        codigo    = d['codigo']
+        curso_pceo = int(d['curso_pceo'])
+        cuat      = d['cuatrimestre']
+        cur = pceo_conn.execute(
+            "INSERT INTO asignaturas (codigo, nombre, curso, cuatrimestre) VALUES (?,?,?,?)",
+            (codigo, d['nombre'], curso_pceo, cuat)
+        )
+        asig_id = cur.lastrowid
+        asig_id_map[codigo] = asig_id
+
+        pceo_conn.execute(
+            "INSERT OR REPLACE INTO fichas (asignatura_id, creditos, af1, af2, af4, af5, af6) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (asig_id,
+             float(d.get('creditos') or 0),
+             int(d.get('af1') or 0),
+             int(d.get('af2') or 0),
+             int(d.get('af4') or 0),
+             int(d.get('af5') or 0),
+             int(d.get('af6') or 0))
+        )
+        # Marcar todas como destacadas en la BD PCEO
+        pceo_conn.execute(
+            "INSERT OR IGNORE INTO asignaturas_destacadas (codigo, grupo_num) VALUES (?,?)",
+            (codigo, f"{curso_pceo}_{cuat}_grupo_unico")
+        )
+
+    pceo_conn.commit()
+    log(f'  ✅ {len(distribucion)} asignaturas insertadas', 'ok')
+
+    # 7. Copiar clases
+    conflicts = []
+    slot_map  = {}   # (pceo_grupo_id, sem_num, dia, new_franja_id) → codigo
+    total_clases = 0
+
+    for d in distribucion:
+        codigo     = d['codigo']
+        fidx       = fuente_idx[d['fuente']]
+        grupo_clave = d.get('grupo_num', '')
+        curso_pceo = int(d['curso_pceo'])
+        cuat       = d['cuatrimestre']
+
+        src_conn      = src_conns[fidx]
+        pceo_grupo_id = grupo_id_map.get((curso_pceo, cuat))
+        new_asig_id   = asig_id_map.get(codigo)
+
+        if pceo_grupo_id is None or new_asig_id is None:
+            log(f'  ⚠️ Sin grupo/asig PCEO para {codigo}, se omite', 'warn')
+            continue
+
+        # Buscar asignatura en fuente
+        src_asig = src_conn.execute(
+            "SELECT id FROM asignaturas WHERE codigo = ?", (codigo,)
+        ).fetchone()
+        if not src_asig:
+            log(f'  ⚠️ Asignatura {codigo} no encontrada en fuente {d["fuente"].upper()}', 'warn')
+            continue
+
+        src_asig_id = src_asig[0]
+
+        # Buscar el grupo fuente con más clases de esta asignatura (más fiable que grupo_num)
+        best = src_conn.execute("""
+            SELECT g.id, COUNT(*) AS cnt
+            FROM clases c
+            JOIN semanas s ON s.id = c.semana_id
+            JOIN grupos g ON g.id = s.grupo_id
+            WHERE c.asignatura_id = ? AND c.es_no_lectivo = 0
+            GROUP BY g.id ORDER BY cnt DESC LIMIT 1
+        """, (src_asig_id,)).fetchone()
+
+        if not best:
+            log(f'  ⚠️ Sin clases para {codigo} en fuente {d["fuente"].upper()}, se omite', 'warn')
+            continue
+
+        src_grupo_id = best[0]
+        franja_map    = franja_maps[fidx]
+
+        clases = src_conn.execute("""
+            SELECT c.dia, c.franja_id, c.aula, c.subgrupo, c.observacion,
+                   c.es_no_lectivo, c.contenido, s.numero
+            FROM clases c
+            JOIN semanas s ON s.id = c.semana_id
+            WHERE s.grupo_id = ? AND c.asignatura_id = ?
+        """, (src_grupo_id, src_asig_id)).fetchall()
+
+        n_copied = 0
+        for dia, src_franja_id, aula, subgrupo, observacion, es_no_lectivo, contenido, sem_num in clases:
+            pceo_semana_id = semana_map.get((pceo_grupo_id, sem_num))
+            if pceo_semana_id is None:
+                continue
+
+            new_franja_id = franja_map.get(src_franja_id, src_franja_id)
+
+            # Conflict detection (sólo clases lectivas, sólo entre asignaturas distintas)
+            if not es_no_lectivo:
+                slot_key = (pceo_grupo_id, sem_num, dia, new_franja_id)
+                if slot_key in slot_map:
+                    prev = slot_map[slot_key]
+                    if prev != codigo:  # ignorar mismo asig con subgrupos distintos
+                        conf_key = tuple(sorted([prev, codigo])) + (sem_num, dia, new_franja_id)
+                        if conf_key not in {tuple(sorted([c['asig1'],c['asig2']]))+
+                                            (c['semana'],c['dia'],new_franja_id) for c in conflicts}:
+                            conflicts.append({
+                                'semana': sem_num, 'dia': dia,
+                                'asig1': prev, 'asig2': codigo
+                            })
+                else:
+                    slot_map[slot_key] = codigo
+
+            pceo_conn.execute("""
+                INSERT INTO clases
+                    (semana_id, dia, franja_id, asignatura_id, aula, subgrupo,
+                     observacion, es_no_lectivo, contenido)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (pceo_semana_id, dia, new_franja_id, new_asig_id,
+                  aula or '', subgrupo or '', observacion or '',
+                  es_no_lectivo or 0, contenido or ''))
+            n_copied += 1
+
+        total_clases += n_copied
+
+    pceo_conn.commit()
+    log(f'  ✅ {total_clases} clases copiadas en total', 'ok')
+
+    return conflicts
+
+
+def build_config_pceo(data, src_configs):
+    """Genera config.json para el grado PCEO."""
+    b  = data['basico']
+    ap = data.get('apariencia', {})
+    siglas = b['siglas'].upper().strip()
+
+    dist = data['distribucion']
+    cuats_por_curso = {}
+    for d in dist:
+        c = str(int(d['curso_pceo']))
+        q = d['cuatrimestre']
+        cuats_por_curso.setdefault(c, set()).add(q)
+
+    grupos_por_curso = {}
+    for c, cuats in cuats_por_curso.items():
+        grupos_por_curso[c] = {
+            '1C': 1 if '1C' in cuats else 0,
+            '2C': 1 if '2C' in cuats else 0,
+        }
+
+    # Franjas de la config A (si disponible)
+    franjas = []
+    if src_configs and src_configs[0]:
+        franjas = src_configs[0].get('degree_structure', {}).get('franjas', [])
+
+    # Activity types heredados de fuente A
+    activity_types = {}
+    if src_configs and src_configs[0]:
+        activity_types = src_configs[0].get('activity_types', {})
+    if not activity_types:
+        activity_types = {
+            'AF1': {'label': 'Teoría', 'aula_exact': [''], 'aula_startswith': []},
+            'AF2': {'label': 'Laboratorio', 'aula_exact': ['LAB'], 'aula_startswith': []},
+            'AF4': {'label': 'Informática', 'aula_exact': [], 'aula_startswith': ['INFO', 'Aula:']},
+            'AF5': {'fichas_only': True},
+            'AF6': {'fichas_only': True},
+        }
+
+    fuentes_info = []
+    for i, f in enumerate(data.get('fuentes', [])):
+        fuentes_info.append({'db_path': f['db_path'], 'grado_nombre': f.get('grado_nombre', '')})
+
+    return {
+        '_comment': f'Configuración PCEO — {siglas} (generado por nuevo_pceo.py)',
+        'pceo': True,
+        'pceo_fuentes': fuentes_info,
+        'institution': {
+            'name':     b.get('institucion', ''),
+            'acronym':  b.get('siglas_inst', ''),
+            'logo_png': 'docs/logo_upct.png',
+            'logo_pdf': 'docs/logo.pdf',
+        },
+        'degree': {'name': b.get('nombre', ''), 'acronym': siglas},
+        'server': {
+            'port':        int(b.get('puerto', 8082)),
+            'db_name':     'horarios.db',
+            'curso_label': b.get('curso_label', ''),
+        },
+        'degree_structure': {
+            'num_cursos':       len(grupos_por_curso),
+            'num_semanas':      16,
+            'grupos_por_curso': grupos_por_curso,
+            'franjas':          franjas,
+        },
+        'branding': {
+            'primary':       ap.get('primary', '#6b1a3a'),
+            'primary_light': ap.get('primary_light', '#8b2a52'),
+            'accent':        ap.get('accent', '#e8a020'),
+            'bg':            ap.get('bg', '#f0f4f8'),
+        },
+        'activity_types': activity_types,
+        'ui': {
+            'destacadas_badge': b.get('badge', 'PCEO'),
+            'export_prefix':    siglas,
+        },
+        'calendario': {},  # no se usa (semanas copiadas de origen)
+    }
+
+
+def generar_launchers_pceo(grado_dir: Path, siglas: str, cfg: dict):
+    """Genera launchers .command/.bat/.sh para el grado PCEO."""
+    port        = cfg['server']['port']
+    db_name     = cfg['server']['db_name']
+    curso_label = cfg['server']['curso_label']
+    db_stem     = db_name.replace('.db', '')
+
+    command_content = f"""#!/bin/bash
+# Launcher PCEO — {siglas} ({curso_label})
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/../.." && pwd)"
+DB_SRC="$DIR/{db_name}"
+DB_TMP="/tmp/{db_stem}_{siglas}.db"
+
+cp "$DB_SRC" "$DB_TMP" 2>/dev/null || true
+
+cleanup() {{
+  kill "$SERVER_PID" 2>/dev/null
+  if [ -f "$DB_TMP" ]; then
+    cp "$DB_TMP" "$DB_SRC"
+    echo "Base de datos guardada."
+  fi
+}}
+trap cleanup EXIT INT TERM
+
+DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
+  python3 "$ROOT/servidor_horarios.py" \\
+  --grado "grados/{siglas}" &
+SERVER_PID=$!
+
+sleep 1.5 && open "http://localhost:{port}"
+wait "$SERVER_PID"
+"""
+    cmd_path = grado_dir / f'Iniciar {siglas}.command'
+    cmd_path.write_text(command_content, encoding='utf-8')
+    cmd_path.chmod(0o755)
+
+    bat_content = f"""@echo off
+REM Launcher PCEO — {siglas} ({curso_label})
+set DIR=%~dp0
+set ROOT=%DIR%..\\..
+set DB_SRC=%DIR%{db_name}
+set DB_TMP=%TEMP%\\{db_stem}_{siglas}.db
+copy /Y "%DB_SRC%" "%DB_TMP%" >nul 2>&1
+set DB_PATH_OVERRIDE=%DB_TMP%
+set CURSO_LABEL={curso_label}
+set CONFIG_PATH_OVERRIDE=%DIR%
+start "" "http://localhost:{port}"
+python "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
+copy /Y "%DB_TMP%" "%DB_SRC%" >nul 2>&1
+echo Base de datos guardada.
+pause
+"""
+    (grado_dir / f'Iniciar {siglas}.bat').write_text(bat_content, encoding='utf-8')
+
+    sh_content = f"""#!/bin/bash
+# Launcher PCEO — {siglas} ({curso_label})
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/../.." && pwd)"
+DB_SRC="$DIR/{db_name}"
+DB_TMP="/tmp/{db_stem}_{siglas}.db"
+
+cp "$DB_SRC" "$DB_TMP" 2>/dev/null || true
+
+cleanup() {{
+  kill "$SERVER_PID" 2>/dev/null
+  [ -f "$DB_TMP" ] && cp "$DB_TMP" "$DB_SRC" && echo "BD guardada."
+}}
+trap cleanup EXIT INT TERM
+
+DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
+  python3 "$ROOT/servidor_horarios.py" --grado "grados/{siglas}" &
+SERVER_PID=$!
+
+sleep 1.5 && (xdg-open "http://localhost:{port}" 2>/dev/null || true)
+wait "$SERVER_PID"
+"""
+    sh_path = grado_dir / f'iniciar_{siglas.lower()}.sh'
+    sh_path.write_text(sh_content, encoding='utf-8')
+    sh_path.chmod(0o755)
+
+
+def api_crear_pceo(data):
+    """Endpoint principal: crea la carpeta y BD del PCEO."""
+    output_lines = []
+
+    def log(msg, tipo=''):
+        output_lines.append(msg)
+        print(msg)
+
+    try:
+        siglas = data['basico']['siglas'].upper().strip()
+        if not siglas:
+            return {'ok': False, 'error': 'Las siglas no pueden estar vacías.'}
+
+        distribucion = data.get('distribucion', [])
+        if not distribucion:
+            return {'ok': False, 'error': 'La distribución está vacía.'}
+
+        fuentes   = data.get('fuentes', [{}, {}])
+        db_path_a = resolve_db_path(fuentes[0].get('db_path', ''))
+        db_path_b = resolve_db_path(fuentes[1].get('db_path', ''))
+
+        for label, p in [('Fuente A', db_path_a), ('Fuente B', db_path_b)]:
+            if not p or not p.exists():
+                return {'ok': False, 'error': f'{label}: no se encuentra {p}'}
+
+        log(f'Abriendo BDs de origen…', 'info')
+        conn_a = sqlite3.connect(str(db_path_a))
+        conn_b = sqlite3.connect(str(db_path_b))
+        src_conns = [conn_a, conn_b]
+
+        # Leer configs de origen
+        src_configs = []
+        for p in [db_path_a, db_path_b]:
+            cfg_p = p.parent / 'config.json'
+            try:
+                with open(cfg_p, encoding='utf-8') as f:
+                    src_configs.append(json.load(f))
+            except Exception:
+                src_configs.append(None)
+
+        # Crear carpeta
+        grado_dir = BASE_DIR / 'grados' / siglas
+        grado_dir.mkdir(parents=True, exist_ok=True)
+        log(f'Carpeta destino: {grado_dir}', 'info')
+
+        # Generar config.json
+        cfg = build_config_pceo(data, src_configs)
+        cfg_path = grado_dir / 'config.json'
+        with open(cfg_path, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        log('  ✅ config.json generado', 'ok')
+
+        # Generar CSV de asignaturas (mismo formato que grado convencional)
+        import csv as _csv
+        csv_path = grado_dir / f'asignaturas_{siglas}.csv'
+        fields = ['codigo', 'nombre', 'curso', 'cuatrimestre', 'creditos', 'af1', 'af2', 'af4', 'af5', 'af6']
+        with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
+            w = _csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            for d in distribucion:
+                w.writerow({
+                    'codigo':       d['codigo'],
+                    'nombre':       d['nombre'],
+                    'curso':        int(d['curso_pceo']),
+                    'cuatrimestre': d['cuatrimestre'],
+                    'creditos':     float(d.get('creditos') or 0),
+                    'af1':          int(d.get('af1') or 0),
+                    'af2':          int(d.get('af2') or 0),
+                    'af4':          int(d.get('af4') or 0),
+                    'af5':          int(d.get('af5') or 0),
+                    'af6':          int(d.get('af6') or 0),
+                })
+        log(f'  ✅ {csv_path.name} generado ({len(distribucion)} asignaturas)', 'ok')
+
+        # Crear BD PCEO
+        db_path = grado_dir / 'horarios.db'
+        if db_path.exists():
+            db_path.unlink()
+        pceo_conn = sqlite3.connect(str(db_path))
+        pceo_conn.execute("PRAGMA foreign_keys = ON")
+
+        log('Creando tablas…', 'info')
+        create_tables_pceo(pceo_conn)
+
+        log('Copiando datos de origen…', 'info')
+        conflicts = generar_pceo_db(pceo_conn, src_conns, distribucion, log)
+
+        pceo_conn.close()
+        conn_a.close()
+        conn_b.close()
+
+        # Reportar conflictos
+        if conflicts:
+            log(f'\n⚠️ Se detectaron {len(conflicts)} solapamientos horarios:', 'warn')
+            for c in conflicts[:20]:  # máximo 20 en consola
+                log(f'   Sem {c["semana"]} {c["dia"]}: {c["asig1"]} ↔ {c["asig2"]}', 'warn')
+            if len(conflicts) > 20:
+                log(f'   … y {len(conflicts)-20} más.', 'warn')
+        else:
+            log('\n✅ Sin solapamientos horarios detectados.', 'ok')
+
+        # Launchers
+        generar_launchers_pceo(grado_dir, siglas, cfg)
+        log('  ✅ Launchers generados (.command / .bat / .sh)', 'ok')
+
+        log(f'\n✅ Grado PCEO "{siglas}" creado en {grado_dir}', 'ok')
+
+        return {
+            'ok':        True,
+            'output':    '\n'.join(output_lines),
+            'grado_dir': str(grado_dir),
+            'conflicts': conflicts,
+        }
+
+    except Exception:
+        tb = traceback.format_exc()
+        return {
+            'ok':       False,
+            'output':   '\n'.join(output_lines),
+            'error':    str(tb).split('\n')[-2],
+            'traceback': tb,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTTP SERVER
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PceoHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        if self.path in ('/', '/nuevo'):
+            self._html(WIZARD_HTML)
+        elif self.path == '/api/ping':
+            self._json({'ok': True})
+        elif self.path == '/api/grados':
+            self._json(api_grados())
+        elif self.path == '/api/logo_svg':
+            self._serve_file(BASE_DIR / 'docs' / 'logo_ianus.svg', 'image/svg+xml')
+        else:
+            self._404()
+
+    def do_POST(self):
+        data = self._read_json()
+        if self.path == '/api/leer_pceo':
+            self._json(api_leer_pceo(data))
+        elif self.path == '/api/crear_pceo':
+            self._json(api_crear_pceo(data))
+        else:
+            self._404()
+
+    def _read_json(self):
+        n = int(self.headers.get('Content-Length', 0))
+        return json.loads(self.rfile.read(n))
+
+    def _html(self, content):
+        b = content.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', len(b))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _json(self, obj):
+        b = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', len(b))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _serve_file(self, path, ctype):
+        try:
+            data = Path(path).read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Content-Length', len(data))
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self._404()
+
+    def _404(self):
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, fmt, *args):
+        pass  # silenciar logs HTTP
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    server = HTTPServer(('localhost', PORT), PceoHandler)
+    url    = f'http://localhost:{PORT}'
+
+    def open_browser():
+        import time
+        time.sleep(0.8)
+        webbrowser.open(url)
+
+    threading.Thread(target=open_browser, daemon=True).start()
+
+    print(f'')
+    print(f'  ╔══════════════════════════════════════════╗')
+    print(f'  ║   Wizard PCEO — Gestor de Horarios       ║')
+    print(f'  ║   {url:<40} ║')
+    print(f'  ╚══════════════════════════════════════════╝')
+    print(f'')
+    print(f'  Abre el navegador en {url}')
+    print(f'  Pulsa Ctrl+C para detener.')
+    print(f'')
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print('\nServidor detenido.')
+
+
+if __name__ == '__main__':
+    main()
