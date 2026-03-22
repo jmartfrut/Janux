@@ -5,18 +5,16 @@
 # IAnus — Gestor de Horarios Universitarios
 
 <p align="center">
-  <a href="https://jmartfrut.github.io/IAnus/">
-    <img src="docs/preview.png" alt="Ver presentación interactiva" width="100%"/>
-  </a>
+  <img src="docs/img/slide_01.jpg" alt="IAnus — Presentación" width="100%"/>
 </p>
 
 <p align="center">
-  <a href="https://jmartfrut.github.io/IAnus/">
-    <img src="https://img.shields.io/badge/📊%20Presentaci%C3%B3n%20Interactiva-GitHub%20Pages-111e3a?style=for-the-badge" alt="Ver presentación"/>
+  <a href="presentacion.html">
+    <img src="https://img.shields.io/badge/▶%20Abrir%20presentaci%C3%B3n-HTML%20local-111e3a?style=for-the-badge&logo=html5&logoColor=e8a020" alt="Abrir presentación"/>
   </a>
 </p>
 
-> 💡 **Haz clic en la imagen** para abrir la presentación interactiva en GitHub Pages (navega con ← → o las teclas de flecha).
+> 💡 Descarga o clona el repo y abre **`presentacion.html`** con doble clic (navega con ← → o las teclas de flecha). No necesita internet ni servidor.
 
 ---
 
