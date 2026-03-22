@@ -5,839 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>IAnus — Gestor de Horarios Universitarios</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.css"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/theme/black.min.css"/>
   <style>
-    /* ── IAnus theme variables ─────────────────────────── */
-    :root {
-      --navy:   #111e3a;
-      --navy2:  #0a1628;
-      --gold:   #e8a020;
-      --gold2:  #f5b940;
-      --blue:   #2855a0;
-      --ice:    #CADCFC;
-      --white:  #ffffff;
-      --gray:   #64748B;
-      --off:    #F8F9FB;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { background: #111e3a; }
+
+    .reveal { background: #111e3a; }
+    .reveal .slides { width: 100% !important; }
+
+    /* Cada sección ocupa toda la pantalla */
+    .reveal .slides section {
+      padding: 0 !important;
+      margin: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      background: #111e3a;
     }
 
-    .reveal { font-family: Arial, sans-serif; }
-
-    /* Base slide background */
-    .reveal .slides section { background: var(--navy); }
-    .reveal .slides section.light-slide { background: var(--off); }
-
-    /* ── Cover slide ─────────────────────────────────────── */
-    .cover-wrap {
-      display: flex; align-items: center; gap: 3.5vw;
-      height: 100%; padding: 4vh 5vw;
-    }
-    .cover-logo { flex: 0 0 auto; }
-    .cover-logo img { width: min(220px, 28vw); border-radius: 18px; }
-    .cover-text { flex: 1; text-align: left; }
-    .cover-title { font-size: clamp(3rem, 8vw, 6rem); font-weight: 900;
-                   font-family: 'Arial Black', Arial, sans-serif; line-height: 1; margin: 0 0 0.15em; }
-    .cover-title .ia { color: var(--gold2); }
-    .cover-title .nus { color: var(--white); }
-    .cover-sub  { color: var(--gold); font-size: clamp(0.9rem, 2.2vw, 1.3rem);
-                  font-style: italic; margin: 0 0 0.6em; }
-    .cover-divider { width: 100%; height: 3px; background: var(--gold); margin: 0.5em 0 0.7em; }
-    .cover-author { color: var(--white); font-size: clamp(1rem, 2.5vw, 1.6rem);
-                    font-family: 'Arial Black', sans-serif; font-weight: 900; margin: 0 0 0.3em; }
-    .cover-inst   { color: var(--ice); font-size: clamp(0.75rem, 1.8vw, 1.05rem); margin: 0 0 0.2em; }
-    .cover-year   { color: var(--gray); font-size: clamp(0.65rem, 1.5vw, 0.9rem); }
-    .cover-gh     { color: var(--gray); font-size: clamp(0.6rem, 1.3vw, 0.82rem);
-                    margin-top: 0.8em; font-family: monospace; }
-
-    /* ── Motivation slide ────────────────────────────────── */
-    .motiv-header {
-      background: var(--gold); color: var(--navy); padding: 0.4em 1em;
-      font-size: clamp(1.2rem, 2.5vw, 1.7rem); font-weight: 900;
-      font-family: 'Arial Black', sans-serif; text-align: left;
-      margin: 0; letter-spacing: 1px;
-    }
-    .motiv-intro {
-      color: var(--ice); font-size: clamp(0.75rem, 1.6vw, 1rem);
-      text-align: left; padding: 0.4em 1em 0.4em;
-      margin: 0;
-    }
-    .motiv-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6vw;
-      padding: 0 1vw 0.6vw; flex: 1;
-    }
-    .motiv-card {
-      background: #1a2d52; border: 1.5px solid var(--blue);
-      border-radius: 8px; padding: 0.6em 0.7em 0.55em;
-      text-align: left; position: relative; overflow: hidden;
-    }
-    .motiv-card::before {
-      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-      width: 5px; background: var(--gold);
-    }
-    .motiv-card-icon { font-size: clamp(1.2rem, 2.5vw, 1.7rem); margin-bottom: 0.15em; }
-    .motiv-card-title { color: var(--gold2); font-weight: 700;
-                        font-size: clamp(0.7rem, 1.4vw, 0.92rem); margin-bottom: 0.25em; }
-    .motiv-card-desc  { color: var(--ice); font-size: clamp(0.6rem, 1.2vw, 0.8rem); line-height: 1.35; }
-
-    /* ── Section divider ─────────────────────────────────── */
-    .section-wrap {
-      display: flex; flex-direction: column; justify-content: center;
-      align-items: flex-start; height: 100%; padding: 4vh 6vw; position: relative;
-    }
-    .section-line {
-      position: absolute; left: 0; right: 0; top: 50%;
-      height: 5px; background: var(--gold);
-    }
-    .section-title {
-      font-family: 'Arial Black', sans-serif; font-size: clamp(1.8rem, 5vw, 3.6rem);
-      font-weight: 900; color: var(--white); margin: 0; z-index: 1; position: relative;
-    }
-    .section-sub {
-      color: var(--gold2); font-size: clamp(0.8rem, 1.8vw, 1.15rem);
-      margin-top: 0.6em; z-index: 1; position: relative;
+    .reveal .slides section img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
     }
 
-    /* ── DB / UI Step slides ─────────────────────────────── */
-    .step-slide {
-      display: flex; height: 100%; overflow: hidden;
-    }
-    .step-panel {
-      flex: 0 0 38%; background: var(--navy2);
-      border-right: 3px solid var(--gold);
-      display: flex; flex-direction: column;
-      padding: 3vh 2.2vw 2vh;
-      box-sizing: border-box;
-      position: relative;
-    }
-    .step-panel::before {
-      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-      width: 6px; background: var(--gold);
-    }
-    .step-label {
-      color: var(--gold2); font-size: clamp(0.6rem, 1.1vw, 0.78rem);
-      font-weight: 700; letter-spacing: 3px; margin-bottom: 0.1em;
-    }
-    .step-number {
-      color: var(--gold); font-family: 'Arial Black', sans-serif;
-      font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 900;
-      line-height: 1; margin-bottom: 0.1em;
-    }
-    .step-divider {
-      width: 100%; height: 3px; background: var(--gold);
-      margin: 0.3em 0 0.5em;
-    }
-    .step-title {
-      color: var(--white); font-family: 'Arial Black', sans-serif;
-      font-size: clamp(0.85rem, 1.8vw, 1.15rem); font-weight: 900;
-      margin-bottom: 0.7em; line-height: 1.25;
-    }
-    .step-bullets { list-style: none; padding: 0; margin: 0; flex: 1; overflow: hidden; }
-    .step-bullets li {
-      color: var(--ice); font-size: clamp(0.62rem, 1.2vw, 0.82rem);
-      padding: 0.3em 0 0.3em 1.1em; position: relative; line-height: 1.4;
-    }
-    .step-bullets li::before {
-      content: '▸'; color: var(--gold); position: absolute; left: 0;
-    }
-    .step-img-wrap {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      background: var(--navy2); padding: 1vh 1vw;
-      box-sizing: border-box; overflow: hidden;
-    }
-    .step-img-wrap img {
-      max-width: 100%; max-height: 100%;
-      object-fit: contain; display: block;
+    /* Controles */
+    .reveal .controls { color: #e8a020; }
+    .reveal .progress  { color: #e8a020; height: 4px; }
+
+    /* Número de slide */
+    .reveal .slide-number {
+      background: rgba(17,30,58,0.75);
+      color: #e8a020;
+      font-size: 14px;
+      padding: 4px 10px;
       border-radius: 4px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     }
-
-    /* ── UI slides (image large + right panel) ───────────── */
-    .ui-slide {
-      display: flex; height: 100%; overflow: hidden;
-    }
-    .ui-img-wrap {
-      flex: 0 0 70%; display: flex; align-items: center; justify-content: center;
-      background: var(--navy2); overflow: hidden;
-    }
-    .ui-img-wrap img {
-      width: 100%; height: 100%;
-      object-fit: contain; display: block;
-    }
-    .ui-panel {
-      flex: 0 0 30%; background: var(--navy2);
-      border-left: 3px solid var(--gold);
-      display: flex; flex-direction: column;
-      padding: 3vh 2vw 2vh;
-      box-sizing: border-box;
-      position: relative;
-    }
-    .ui-panel::after {
-      content: ''; position: absolute; right: 0; top: 0; bottom: 0;
-      width: 6px; background: var(--gold);
-    }
-    .ui-panel-title {
-      color: var(--gold2); font-family: 'Arial Black', sans-serif;
-      font-size: clamp(0.8rem, 1.6vw, 1.1rem); font-weight: 900;
-      margin-bottom: 0.5em; line-height: 1.25;
-    }
-    .ui-panel-divider {
-      width: 100%; height: 3px; background: var(--gold); margin-bottom: 0.6em;
-    }
-    .ui-bullets { list-style: none; padding: 0; margin: 0; flex: 1; overflow: hidden; }
-    .ui-bullets li {
-      color: var(--ice); font-size: clamp(0.6rem, 1.15vw, 0.82rem);
-      padding: 0.32em 0 0.32em 1.1em; position: relative; line-height: 1.4;
-    }
-    .ui-bullets li::before {
-      content: '▸'; color: var(--gold); position: absolute; left: 0;
-    }
-
-    /* ── Wide screenshot slide (graphs) ─────────────────── */
-    .wide-slide {
-      display: flex; flex-direction: column; height: 100%; overflow: hidden;
-    }
-    .wide-header {
-      flex: 0 0 auto; background: var(--navy2);
-      border-left: 6px solid var(--gold);
-      padding: 0.5em 1.5em;
-      font-family: 'Arial Black', sans-serif;
-      font-size: clamp(0.9rem, 2vw, 1.3rem);
-      font-weight: 900; color: var(--white);
-    }
-    .wide-img-wrap {
-      flex: 1; display: flex; align-items: flex-start; overflow: hidden;
-    }
-    .wide-img-wrap img {
-      width: 100%; object-fit: contain; object-position: top;
-    }
-    .wide-bullets {
-      flex: 0 0 auto; background: var(--navy2);
-      padding: 0.4em 1.5em 0.5em;
-      display: flex; flex-wrap: wrap; gap: 0 3vw;
-    }
-    .wide-bullets li {
-      color: var(--ice); font-size: clamp(0.6rem, 1.1vw, 0.78rem);
-      list-style: none; padding-left: 1em; position: relative;
-    }
-    .wide-bullets li::before {
-      content: '▸'; color: var(--gold); position: absolute; left: 0;
-    }
-
-    /* ── Project Structure slide ─────────────────────────── */
-    .struct-slide {
-      display: flex; height: 100%; gap: 1vw; padding: 1.5vh 2vw; box-sizing: border-box;
-      background: var(--navy);
-    }
-    .struct-tree {
-      flex: 0 0 46%; background: var(--navy2);
-      border-radius: 8px; padding: 1.2em 1.4em;
-      font-family: 'Courier New', monospace;
-      font-size: clamp(0.62rem, 1.2vw, 0.82rem);
-      line-height: 1.8; overflow: hidden; box-sizing: border-box;
-    }
-    .struct-tree .root { color: var(--gold2); font-weight: bold; }
-    .struct-tree .py   { color: var(--ice); }
-    .struct-tree .special { color: #27ae60; }
-    .struct-tree .dir  { color: var(--gold); }
-    .struct-right {
-      flex: 1; display: flex; flex-direction: column; gap: 1vh;
-    }
-    .struct-gh {
-      background: var(--navy2); border-radius: 8px;
-      border-left: 5px solid var(--gold);
-      padding: 0.9em 1.2em;
-    }
-    .struct-gh-title { color: var(--gold2); font-weight: 700;
-                       font-size: clamp(0.75rem, 1.5vw, 1rem); margin-bottom: 0.2em; }
-    .struct-gh-url   { color: var(--ice); font-family: monospace;
-                       font-size: clamp(0.7rem, 1.3vw, 0.9rem); }
-    .struct-gh-sub   { color: var(--gray); font-size: clamp(0.6rem, 1.1vw, 0.78rem);
-                       margin-top: 0.2em; }
-    .tech-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 0.8vw; flex: 1;
-    }
-    .tech-card {
-      background: var(--off); border-radius: 8px;
-      border-left: 5px solid var(--blue);
-      padding: 0.7em 0.9em; display: flex; flex-direction: column;
-    }
-    .tech-card-icon  { font-size: clamp(1rem, 2vw, 1.4rem); margin-bottom: 0.15em; }
-    .tech-card-name  { color: var(--navy); font-weight: 700;
-                       font-size: clamp(0.7rem, 1.3vw, 0.88rem); }
-    .tech-card-desc  { color: var(--gray); font-size: clamp(0.58rem, 1.05vw, 0.72rem); }
-
-    /* ── Closing slide ───────────────────────────────────── */
-    .close-wrap {
-      display: flex; flex-direction: column; align-items: center;
-      justify-content: center; height: 100%; gap: 1.5vh; position: relative;
-    }
-    .close-wrap .line { position: absolute; left: 0; right: 0; top: 50%;
-                        height: 5px; background: var(--gold); }
-    .close-logo { width: min(160px, 22vw); border-radius: 16px; z-index: 1; }
-    .close-title {
-      font-family: 'Arial Black', sans-serif;
-      font-size: clamp(2.5rem, 7vw, 5.5rem); font-weight: 900;
-      margin: 0; z-index: 1;
-    }
-    .close-title .ia  { color: var(--gold2); }
-    .close-title .nus { color: var(--white); }
-    .close-sub  { color: var(--gold); font-style: italic;
-                  font-size: clamp(0.8rem, 1.8vw, 1.1rem); z-index: 1; }
-    .close-gh   { color: var(--ice); font-size: clamp(0.7rem, 1.5vw, 0.95rem); z-index: 1; }
-    .close-foot { color: var(--gray); font-size: clamp(0.55rem, 1.1vw, 0.75rem); z-index: 1; }
-
-    /* ── Global overrides ────────────────────────────────── */
-    .reveal .slides { text-align: left; }
-    .reveal .slides section { padding: 0 !important; height: 100%; }
-    .reveal .progress { background: rgba(255,255,255,0.15); }
-    .reveal .progress span { background: var(--gold); }
-    .reveal .controls { color: var(--gold); }
-    .reveal .slide-number { color: var(--gold); background: rgba(17,30,58,0.7); }
-    .reveal h1, .reveal h2, .reveal h3 { text-transform: none; }
-    /* hide default slide backgrounds since we set them per-slide */
-    .reveal .slide-background { background: var(--navy) !important; }
   </style>
 </head>
 <body>
 <div class="reveal">
-<div class="slides">
-
-<!-- ═══════════════════════════════════════════════════════════
-     SLIDE 1 — PORTADA
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div class="cover-wrap">
-    <div class="cover-logo">
-      <img src="logo_ianus.svg" alt="IAnus logo"/>
-    </div>
-    <div class="cover-text">
-      <div class="cover-title"><span class="ia">IA</span><span class="nus">nus</span></div>
-      <div class="cover-sub">Gestor de Horarios Universitarios</div>
-      <div class="cover-divider"></div>
-      <div class="cover-author">Jesús Martínez Frutos</div>
-      <div class="cover-inst">Universidad Politécnica de Cartagena · ETSII</div>
-      <div class="cover-year">Grado en Ingeniería Mecánica · Curso 2025–2026</div>
-      <div class="cover-gh">github.com/jmartfrut/IAnus</div>
-    </div>
+  <div class="slides">
+    <section><img src="img/slide_01.jpg" alt="Slide 1"/></section>
+    <section><img src="img/slide_02.jpg" alt="Slide 2"/></section>
+    <section><img src="img/slide_03.jpg" alt="Slide 3"/></section>
+    <section><img src="img/slide_04.jpg" alt="Slide 4"/></section>
+    <section><img src="img/slide_05.jpg" alt="Slide 5"/></section>
+    <section><img src="img/slide_06.jpg" alt="Slide 6"/></section>
+    <section><img src="img/slide_07.jpg" alt="Slide 7"/></section>
+    <section><img src="img/slide_08.jpg" alt="Slide 8"/></section>
+    <section><img src="img/slide_09.jpg" alt="Slide 9"/></section>
+    <section><img src="img/slide_10.jpg" alt="Slide 10"/></section>
+    <section><img src="img/slide_11.jpg" alt="Slide 11"/></section>
+    <section><img src="img/slide_12.jpg" alt="Slide 12"/></section>
+    <section><img src="img/slide_13.jpg" alt="Slide 13"/></section>
+    <section><img src="img/slide_14.jpg" alt="Slide 14"/></section>
+    <section><img src="img/slide_15.jpg" alt="Slide 15"/></section>
+    <section><img src="img/slide_16.jpg" alt="Slide 16"/></section>
+    <section><img src="img/slide_17.jpg" alt="Slide 17"/></section>
+    <section><img src="img/slide_18.jpg" alt="Slide 18"/></section>
+    <section><img src="img/slide_19.jpg" alt="Slide 19"/></section>
+    <section><img src="img/slide_20.jpg" alt="Slide 20"/></section>
+    <section><img src="img/slide_21.jpg" alt="Slide 21"/></section>
+    <section><img src="img/slide_22.jpg" alt="Slide 22"/></section>
+    <section><img src="img/slide_23.jpg" alt="Slide 23"/></section>
   </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SLIDE 2 — MOTIVACIÓN
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div style="display:flex;flex-direction:column;height:100%;">
-    <div class="motiv-header">MOTIVACIÓN</div>
-    <div class="motiv-intro">
-      Un entorno integrado para el desarrollo de horarios y planificación de exámenes en titulaciones universitarias.
-    </div>
-    <div class="motiv-grid">
-      <div class="motiv-card">
-        <div class="motiv-card-icon">📅</div>
-        <div class="motiv-card-title">Gestión de Horarios</div>
-        <div class="motiv-card-desc">Asignación semanal de clases por grupo, cuatrimestre y franja horaria</div>
-      </div>
-      <div class="motiv-card">
-        <div class="motiv-card-icon">⚠️</div>
-        <div class="motiv-card-title">Detección de Conflictos</div>
-        <div class="motiv-card-desc">Verificación automática de solapamientos entre asignaturas y grupos</div>
-      </div>
-      <div class="motiv-card">
-        <div class="motiv-card-icon">📊</div>
-        <div class="motiv-card-title">Estadísticas en tiempo real</div>
-        <div class="motiv-card-desc">Horas acumuladas vs. previstas por asignatura y tipo de actividad</div>
-      </div>
-      <div class="motiv-card">
-        <div class="motiv-card-icon">🗓️</div>
-        <div class="motiv-card-title">Planificación de Exámenes</div>
-        <div class="motiv-card-desc">Distribución automática y manual de parciales y finales por semana</div>
-      </div>
-      <div class="motiv-card">
-        <div class="motiv-card-icon">🔄</div>
-        <div class="motiv-card-title">Coordinación entre Cursos</div>
-        <div class="motiv-card-desc">Coordinación horizontal y vertical para evitar saturación de carga</div>
-      </div>
-      <div class="motiv-card">
-        <div class="motiv-card-icon">📤</div>
-        <div class="motiv-card-title">Exportación PDF / Excel</div>
-        <div class="motiv-card-desc">Generación de horarios semanales y anuales exportables en PDF</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SLIDE 3 — ESTRUCTURA DEL PROYECTO
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div class="struct-slide">
-    <div class="struct-tree">
-      <div class="root">📁 IAnus/</div>
-      <div class="py">├── servidor_horarios.py</div>
-      <div class="py">├── nuevo_grado.py</div>
-      <div class="py">├── importar_horarios.py</div>
-      <div class="py">├── exportar_excel.py</div>
-      <div class="py">├── rebuild_db.py</div>
-      <div class="py">├── update_calendario.py</div>
-      <div class="special">├── IAnus.command  ← launcher macOS</div>
-      <div class="special">├── IAnus.bat      ← launcher Windows</div>
-      <div class="dir">├── docs/</div>
-      <div class="py">&nbsp;&nbsp;&nbsp;&nbsp;└── logo_ianus.svg</div>
-      <div class="dir">└── grados/</div>
-      <div class="py">&nbsp;&nbsp;&nbsp;&nbsp;└── GIM/ ← una carpeta por grado</div>
-    </div>
-    <div class="struct-right">
-      <div class="struct-gh">
-        <div class="struct-gh-title">🐙 Repositorio GitHub</div>
-        <div class="struct-gh-url">github.com/jmartfrut/IAnus</div>
-        <div class="struct-gh-sub">Código abierto · Python + JS · SQLite</div>
-      </div>
-      <div class="tech-grid">
-        <div class="tech-card">
-          <div class="tech-card-icon">🐍</div>
-          <div class="tech-card-name">Python 3</div>
-          <div class="tech-card-desc">Backend: Flask + SQLite3</div>
-        </div>
-        <div class="tech-card">
-          <div class="tech-card-icon">🌐</div>
-          <div class="tech-card-name">JavaScript</div>
-          <div class="tech-card-desc">Frontend: Vanilla JS + CSS Grid</div>
-        </div>
-        <div class="tech-card">
-          <div class="tech-card-icon">🗃️</div>
-          <div class="tech-card-name">SQLite</div>
-          <div class="tech-card-desc">Base de datos por grado</div>
-        </div>
-        <div class="tech-card">
-          <div class="tech-card-icon">📑</div>
-          <div class="tech-card-name">PDF / Excel</div>
-          <div class="tech-card-desc">ReportLab + openpyxl</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SECTION DIVIDER — CREACIÓN DE LA BASE DE DATOS
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div class="section-wrap">
-    <div class="section-line"></div>
-    <div class="section-title">Creación de la<br>Base de Datos</div>
-    <div class="section-sub">Wizard paso a paso para dar de alta un nuevo grado desde cero</div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     DB WIZARD — PASOS 1–8 (+ sub-pasos del paso 7)
-═══════════════════════════════════════════════════════════════ -->
-
-<!-- PASO 1 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">01</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Datos Básicos</div>
-      <ul class="step-bullets">
-        <li>Nombre completo del grado e institución</li>
-        <li>Siglas / clave del grado que identifican la carpeta en disco</li>
-        <li>Siglas de la institución (ej. UPCT)</li>
-        <li>Etiqueta del curso académico (ej. 2026-2027)</li>
-        <li>Puerto del servidor web local</li>
-        <li>Badge "PCEO" para titulaciones dobles (opcional)</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.35.26.png" alt="Paso 1"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 2 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">02</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Estructura del Grado</div>
-      <ul class="step-bullets">
-        <li>Número de cursos del grado (1 a 4)</li>
-        <li>Grupos por curso y cuatrimestre</li>
-        <li>Franjas horarias: etiqueta visible y horario exacto</li>
-        <li>Añadir o eliminar franjas con el botón "+ Añadir franja"</li>
-        <li>Define la cuadrícula base del horario semanal</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.35.49.png" alt="Paso 2"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 3 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">03</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Calendario Académico</div>
-      <ul class="step-bullets">
-        <li>Inicio y fin de cada cuatrimestre</li>
-        <li>Vista de calendario mensual: clic para marcar días no lectivos o festivos</li>
-        <li>1 clic → no lectivo · 2 clics → festivo · 3 clics → borrar</li>
-        <li>Los días festivos se propagan automáticamente al horario</li>
-        <li>Se configura por separado para 1.er y 2.º cuatrimestre</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.36.57.png" alt="Paso 3"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 4 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">04</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Tipos de Actividad Formativa</div>
-      <ul class="step-bullets">
-        <li>Identificación según el campo "aula" en los Excel</li>
-        <li>AF1 → Teoría: aulas vacías o "**"</li>
-        <li>AF2 → Laboratorio: aulas que comienzan por "LAB"</li>
-        <li>AF4 → Informática: aulas que comienzan por "INFO"</li>
-        <li>AF5/AF6 son solo para fichas docentes, sin configuración extra</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.37.31.png" alt="Paso 4"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 5 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">05</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Apariencia Visual del Grado</div>
-      <ul class="step-bullets">
-        <li>Paleta de colores personalizable por grado</li>
-        <li>Color Principal: cabecera, botones activos</li>
-        <li>Color Principal Claro: hover y bordes</li>
-        <li>Color de Acento: badges y etiquetas</li>
-        <li>Vista previa en tiempo real</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.37.35.png" alt="Paso 5"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 6 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">06</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Asignaturas del Grado</div>
-      <ul class="step-bullets">
-        <li>Listado completo con curso, cuatrimestre y créditos</li>
-        <li>Horas previstas por tipo: AF1, AF2, AF4</li>
-        <li>Importación desde CSV o entrada manual</li>
-        <li>Estas horas son la referencia para el módulo de estadísticas</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.37.55.png" alt="Paso 6"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 7a -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">07</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Importar Horario de Año Anterior</div>
-      <ul class="step-bullets">
-        <li>Paso opcional: reutilizar la distribución del curso anterior</li>
-        <li><strong style="color:var(--gold2)">Horario vacío:</strong> se generan clases en blanco, edición manual</li>
-        <li><strong style="color:var(--gold2)">Importar desde Excel:</strong> selecciona ficheros del año pasado</li>
-        <li>Las clases se trasladan respetando el nuevo calendario</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.38.04.png" alt="Paso 7a"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 7b -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">07b</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Selección de Archivos Excel</div>
-      <ul class="step-bullets">
-        <li>Un fichero Excel por curso (ambos cuatrimestres)</li>
-        <li>Nomenclatura: 25-26_GIM_1C.xlsx, etc.</li>
-        <li>Botón "Analizar Excel" para validar antes de continuar</li>
-        <li>Muestra clases detectadas por curso y cuatrimestre</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.38.30.png" alt="Paso 7b"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 7c -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">07c</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Análisis y Validación</div>
-      <ul class="step-bullets">
-        <li>Resumen con checkmarks verdes por curso</li>
-        <li>1295 clases listas para importar (ejemplo: 4 cursos)</li>
-        <li>Desglose 1C / 2C con número de asignaturas</li>
-        <li>Festivos y no-lectivos se respetan automáticamente</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.38.53.png" alt="Paso 7c"/>
-    </div>
-  </div>
-</section>
-
-<!-- PASO 8 -->
-<section>
-  <div class="step-slide">
-    <div class="step-panel">
-      <div class="step-label">PASO</div>
-      <div class="step-number">08</div>
-      <div class="step-divider"></div>
-      <div class="step-title">Generar Proyecto</div>
-      <ul class="step-bullets">
-        <li>Resumen completo: grado, institución, estructura, calendario</li>
-        <li>Botón "⚡ Generar": crea la carpeta con la base de datos SQLite</li>
-        <li>Terminal en tiempo real: progreso de grupos, semanas, clases</li>
-        <li>Al finalizar: ruta de la carpeta generada</li>
-        <li>Arrancar: doble clic en el launcher .command</li>
-      </ul>
-    </div>
-    <div class="step-img-wrap">
-      <img src="../IMAGENES/CREACION%20DE%20LA%20BASE%20DE%20DATOS/Screenshot%202026-03-21%20at%2022.39.40.png" alt="Paso 8"/>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SECTION DIVIDER — INTERFAZ
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div class="section-wrap">
-    <div class="section-line"></div>
-    <div class="section-title">La Interfaz<br>de IAnus</div>
-    <div class="section-sub">Vistas, herramientas y funcionalidades principales</div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     UI SLIDES — INTERFAZ
-═══════════════════════════════════════════════════════════════ -->
-
-<!-- Vista Semanal -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.40.06.png" alt="Vista Semanal"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Vista Semanal del Horario</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Cabecera: grado, curso, grupo activos</li>
-        <li>Cuadrícula semanal: L–V por franja horaria</li>
-        <li>Colores de asignatura por tipo de actividad</li>
-        <li>Selector de semana con botonera numérica</li>
-        <li>Panel inferior: horas acumuladas vs. previstas</li>
-        <li>Botón "PDF semana": exporta la semana actual</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- Estadísticas -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.40.15.png" alt="Estadísticas"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Vista Estadísticas</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Tabla completa de asignaturas con horas desglosadas</li>
-        <li>Fondo rojo: asignatura que incumple la ficha docente</li>
-        <li>Columnas: Teoría, Lab., Informática, Total</li>
-        <li>Iconos de edición por asignatura</li>
-        <li>Alerta si hay conflicto de horario</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- Evolución — slide ancho -->
-<section>
-  <div class="wide-slide">
-    <div class="wide-header">Evolución Acumulada de Prácticas</div>
-    <div class="wide-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.40.22.png" alt="Gráficas"/>
-    </div>
-    <ul class="wide-bullets">
-      <li>Gráficas de evolución por asignatura y grupo</li>
-      <li>Eje X: semanas · Eje Y: horas acumuladas</li>
-      <li>Series separadas: LAB, INFO, INFO2…</li>
-      <li>Cuatro asignaturas por vista para comparar progreso</li>
-      <li>Detecta desequilibrios entre grupos</li>
-    </ul>
-  </div>
-</section>
-
-<!-- Parciales -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.40.33.png" alt="Parciales"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Planificación de Exámenes Parciales</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Calendario de parciales y finales por cuatrimestre</li>
-        <li>Distribución automática o manual por semana</li>
-        <li>Colores por curso (1.º azul, 2.º verde…)</li>
-        <li>Detección de solapamientos entre cursos</li>
-        <li>Exportación PDF del calendario completo</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- Festivos -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.40.37.png" alt="Festivos"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Calendario de Festivos y No Lectivos</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Vista anual del calendario académico completo</li>
-        <li>Festivos en rojo · No lectivos en naranja</li>
-        <li>Fines de semana y fuera de cuatrimestre en gris</li>
-        <li>Los cambios se propagan a todas las semanas</li>
-        <li>Botón "Actualizar" para sincronizar con BD</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- 2do cuatrimestre -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.41.17.png" alt="2do cuatrimestre"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Navegación entre Cuatrimestres</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Selector de cuatrimestre en la barra superior</li>
-        <li>Calendario de semanas propio por cuatrimestre</li>
-        <li>Tooltip al pasar el ratón sobre una clase</li>
-        <li>Doble clic para añadir o editar una clase</li>
-        <li>Mismo flujo: edición, estadísticas y PDF</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- Edición y conflictos -->
-<section>
-  <div class="ui-slide">
-    <div class="ui-img-wrap">
-      <img src="../IMAGENES/NTERFAZ%20HORARIOS/Screenshot%202026-03-21%20at%2022.41.20.png" alt="Edición"/>
-    </div>
-    <div class="ui-panel">
-      <div class="ui-panel-title">Edición y Detección de Conflictos</div>
-      <div class="ui-panel-divider"></div>
-      <ul class="ui-bullets">
-        <li>Modo edición: doble clic o botón "Nueva clase"</li>
-        <li>Marcadores rojos en clases solapadas</li>
-        <li>Panel lateral con horas actualizado en tiempo real</li>
-        <li>Código de colores coherente con el PDF</li>
-        <li>Cambios guardados automáticamente al cerrar</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SLIDE CIERRE
-═══════════════════════════════════════════════════════════════ -->
-<section>
-  <div class="close-wrap">
-    <div class="line"></div>
-    <img class="close-logo" src="logo_ianus.svg" alt="IAnus"/>
-    <div class="close-title"><span class="ia">IA</span><span class="nus">nus</span></div>
-    <div class="close-sub">Gestor de Horarios Universitarios · UPCT</div>
-    <div class="close-gh">github.com/jmartfrut/IAnus</div>
-    <div class="close-foot">Jesús Martínez Frutos · Universidad Politécnica de Cartagena · 2026</div>
-  </div>
-</section>
-
-</div><!-- /slides -->
-</div><!-- /reveal -->
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.js"></script>
 <script>
   Reveal.initialize({
     hash: true,
-    center: false,
-    progress: true,
     slideNumber: 'c/t',
-    transition: 'fade',
-    transitionSpeed: 'fast',
-    backgroundTransition: 'fade',
     controls: true,
-    controlsTutorial: false,
-    keyboard: true,
-    overview: true,
+    progress: true,
+    center: true,
+    transition: 'slide',
+    transitionSpeed: 'fast',
     width: '100%',
     height: '100%',
     margin: 0,
-    minScale: 0.5,
+    minScale: 0.2,
     maxScale: 2.0,
+    keyboard: true,
+    overview: true,
+    touch: true,
   });
 </script>
 </body>
