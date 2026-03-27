@@ -5,7 +5,7 @@
    height="520"
    version="1.1"
    id="svg22"
-   sodipodi:docname="logo_ianus.svg"
+   sodipodi:docname="logo_janux.svg"
    inkscape:version="1.3.2 (091e20e, 2023-11-25)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -20,13 +20,13 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.71374544"
-     inkscape:cx="376.18454"
-     inkscape:cy="-51.13868"
+     inkscape:zoom="0.82697685"
+     inkscape:cx="162.03597"
+     inkscape:cy="380.30085"
      inkscape:window-width="1792"
-     inkscape:window-height="1120"
+     inkscape:window-height="998"
      inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-y="30"
      inkscape:window-maximized="0"
      inkscape:current-layer="svg22" />
   <defs
@@ -254,7 +254,9 @@
      letter-spacing="-3"
      id="text21"><tspan
        style="fill:#ffffff"
-       id="tspan1">Janux</tspan></text>
+       id="tspan1">Janu</tspan><tspan
+       id="tspan3"
+       style="fill:#ffcc00">x</tspan></text>
   <rect
      x="110"
      y="430"
@@ -262,10 +264,11 @@
      height="4"
      rx="2"
      fill="url(#gold)"
-     id="rect21" />
+     id="rect21"
+     style="fill:#ffcc00" />
   <text
      xml:space="preserve"
-     style="font-weight:bold;font-size:33.7668px;line-height:1.25;font-family:'Apple Braille';-inkscape-font-specification:'Apple Braille Bold';word-spacing:0px;fill:#ffcc00;stroke-width:1.80893"
+     style="font-weight:bold;font-size:33.7668px;line-height:1.25;font-family:'Apple Braille';-inkscape-font-specification:'Apple Braille Bold';word-spacing:0px;fill:#d4aa00;stroke-width:1.80893"
      x="176.39464"
      y="474.6001"
      id="text23"><tspan
@@ -273,5 +276,5 @@
        id="tspan23"
        x="176.39464"
        y="474.6001"
-       style="font-style:italic;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:Arial;-inkscape-font-specification:'Arial Bold Italic';stroke-width:1.80893">Scheduler</tspan></text>
+       style="font-style:italic;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:Arial;-inkscape-font-specification:'Arial Bold Italic';fill:#ffcc00;stroke-width:1.80893">Scheduler</tspan></text>
 </svg>
