@@ -1,6 +1,5 @@
 
 <p align="center">
-# Janux — Gestor de Horarios Universitarios
   <a href="docs/presentacion.pdf">
     <img src="docs/img/slide_01.jpg" alt="Janux — Ver presentación" width="100%"/>
   </a>
