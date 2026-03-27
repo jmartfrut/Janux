@@ -1,10 +1,6 @@
-<p align="center">
-  <img src="docs/logo_janux.svg" alt="Janux logo" width="180"/>
-</p>
 
+<p align="center">
 # Janux — Gestor de Horarios Universitarios
-
-<p align="center">
   <a href="docs/presentacion.pdf">
     <img src="docs/img/slide_01.jpg" alt="Janux — Ver presentación" width="100%"/>
   </a>
