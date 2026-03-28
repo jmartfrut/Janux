@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Horario {{ DEGREE_ACRONYM }} – Base de Datos</title>
-<link rel="stylesheet" href="/static/horarios.css">
+<link rel="stylesheet" href="/static/horarios.css?v={{ APP_VERSION }}">
 <style>
 :root {
   --primary: {{ COLOR_PRIMARY }}; --primary-light: {{ COLOR_PRIMARY_LIGHT }}; --accent: {{ COLOR_ACCENT }}; --bg: {{ COLOR_BG }};
@@ -75,6 +75,7 @@
   </div>
   <div class="header-right">
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
+    <div id="versionBadge" class="version-badge" title="Haz clic para ver el estado completo" onclick="toggleVersionDetail()" style="cursor:pointer"></div>
     <input type="file" id="importDBFile" accept=".db" style="display:none" onchange="importDBFileSelected(this)">
     <button class="btn btn-outline btn-sm" id="btnImportDB" onclick="document.getElementById('importDBFile').click()" title="Sustituye la base de datos activa por un fichero .db seleccionado">&#128229; Importar</button>
     <button class="btn btn-success btn-sm" id="btnSaveDB" onclick="saveDB()" title="Fuerza WAL checkpoint y sobreescribe la base de datos activa">&#128424; Guardar</button>
@@ -278,7 +279,7 @@ const TIPO_TO_AF          = {{ TIPO_TO_AF_JSON | safe }};
   });
 })();
 </script>
-<script src="/static/horarios.js"></script>
+<script src="/static/horarios.js?v={{ APP_VERSION }}"></script>
 
 <footer style="text-align:center;padding:14px 20px;font-size:.72rem;color:var(--text-light);border-top:1px solid var(--border);margin-top:24px;background:var(--card)">
   &copy; <span id="footer-year"></span> Jes&uacute;s Mart&iacute;nez-Frutos &mdash; {{ DEGREE_ACRONYM }} &middot; {{ INSTITUTION_ACRONYM }}

@@ -798,7 +798,9 @@ def api_leer_dtie(data):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_tables_dtie(conn):
-    """Crea el esquema completo (igual que setup_grado)."""
+    """Crea el esquema completo al último nivel de migrate_db.py.
+    Mantener sincronizado con setup_grado.py::create_tables y
+    con las migraciones de tools/migrate_db.py."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS asignaturas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -824,7 +826,8 @@ def create_tables_dtie(conn):
             semana_id INTEGER REFERENCES semanas(id),
             dia TEXT, franja_id INTEGER REFERENCES franjas(id),
             asignatura_id INTEGER REFERENCES asignaturas(id),
-            aula TEXT DEFAULT '', subgrupo TEXT DEFAULT '',
+            aula TEXT DEFAULT '', tipo TEXT DEFAULT '',
+            subgrupo TEXT DEFAULT '', af_cat TEXT DEFAULT NULL,
             observacion TEXT DEFAULT '', es_no_lectivo INTEGER DEFAULT 0,
             contenido TEXT DEFAULT ''
         );
@@ -832,7 +835,8 @@ def create_tables_dtie(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             asignatura_id INTEGER NOT NULL UNIQUE REFERENCES asignaturas(id) ON DELETE CASCADE,
             creditos REAL DEFAULT 0, af1 INTEGER DEFAULT 0, af2 INTEGER DEFAULT 0,
-            af4 INTEGER DEFAULT 0, af5 INTEGER DEFAULT 0, af6 INTEGER DEFAULT 0
+            af3 INTEGER DEFAULT 0, af4 INTEGER DEFAULT 0,
+            af5 INTEGER DEFAULT 0, af6 INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS festivos_calendario (
             fecha TEXT PRIMARY KEY, tipo TEXT DEFAULT 'no_lectivo', descripcion TEXT DEFAULT ''
@@ -855,7 +859,14 @@ def create_tables_dtie(conn):
         );
         CREATE TABLE IF NOT EXISTS asignaturas_destacadas (
             codigo TEXT NOT NULL, grupo_num TEXT NOT NULL DEFAULT '',
-            PRIMARY KEY (codigo, grupo_num)
+            act_type TEXT NOT NULL DEFAULT '', subgrupo TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (codigo, grupo_num, act_type, subgrupo)
+        );
+        CREATE TABLE IF NOT EXISTS comentarios_horario (
+            grupo_key TEXT NOT NULL,
+            comentario TEXT DEFAULT '',
+            ts TEXT DEFAULT '',
+            PRIMARY KEY (grupo_key)
         );
     """)
     conn.commit()
@@ -1362,6 +1373,13 @@ def api_crear_dtie(data):
         dtie_conn.close()
         conn_a.close()
         conn_b.close()
+
+        # Marcar la BD DTIE como actualizada al esquema más reciente
+        try:
+            from migrate_db import stamp as _stamp_db
+            _stamp_db(str(db_path))
+        except ImportError:
+            pass  # el servidor aplicará migraciones al arrancar
 
         # Reportar conflictos
         if conflicts:

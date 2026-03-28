@@ -142,6 +142,66 @@ async function importDB(file) {
   }
 }
 
+// ─── VERSIÓN ─────────────────────────────────────────────────────────────────
+
+let _versionDetailVisible = false;
+
+async function loadVersionBadge() {
+  const badge = document.getElementById('versionBadge');
+  if (!badge) return;
+  try {
+    const info = await fetch('/api/db/info').then(r => r.json());
+    const upToDate = info.db_up_to_date;
+    badge.className = 'version-badge ' + (upToDate ? 'ok' : 'warn');
+    badge.innerHTML = upToDate
+      ? `&#10003; v${info.app_version}`
+      : `&#9888; v${info.app_version} · BD v${info.db_version}&#8594;v${info.schema_latest}`;
+    badge.title = upToDate
+      ? `Código v${info.app_version} · Esquema BD v${info.db_version} — Al día. Haz clic para más detalle.`
+      : `Hay migraciones pendientes (BD v${info.db_version} → v${info.schema_latest}). Reinicia el servidor para actualizar.`;
+    badge._info = info;
+  } catch(e) {
+    badge.style.display = 'none';
+  }
+}
+
+function toggleVersionDetail() {
+  const badge = document.getElementById('versionBadge');
+  const existing = document.getElementById('versionDetail');
+  if (existing) { existing.remove(); _versionDetailVisible = false; return; }
+  if (!badge || !badge._info) return;
+  const info = badge._info;
+
+  const div = document.createElement('div');
+  div.id = 'versionDetail';
+  div.className = 'version-detail';
+  const rows = [
+    ['Código (servidor)',  `v${info.app_version}`],
+    ['Esquema BD actual',  `v${info.db_version}`],
+    ['Esquema disponible', `v${info.schema_latest}`],
+    ['Estado',            info.db_up_to_date ? '✅ Al día' : '⚠️ Pendiente — reinicia el servidor'],
+  ];
+  div.innerHTML = `<table>${rows.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`;
+
+  // Colocar como hijo de body con posición fixed para evitar recorte del header
+  document.body.appendChild(div);
+  const rect = badge.getBoundingClientRect();
+  div.style.position = 'fixed';
+  div.style.top  = (rect.bottom + 6) + 'px';
+  div.style.right = (window.innerWidth - rect.right) + 'px';
+  div.style.left  = 'auto';
+
+  _versionDetailVisible = true;
+  const close = (e) => {
+    if (!badge.contains(e.target) && !div.contains(e.target)) {
+      div.remove();
+      _versionDetailVisible = false;
+      document.removeEventListener('click', close);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+
 async function toggleFichaOverride(codigo, action, grupoKey) {
   await api('/api/ficha-override', { codigo, action, grupo_key: grupoKey || '' });
   DB = await api('/api/schedule');
@@ -2944,6 +3004,7 @@ async function saveFestivo(fecha, action) {
   try {
     _classroomsAll = await fetch('/api/classrooms').then(r => r.json());
   } catch(e) { _classroomsAll = []; }
+  loadVersionBadge();   // sin await — se carga en paralelo, no bloquea la UI
   await loadData();
   const rows = await api('/api/festivos');
   FESTIVOS_MAP = {};

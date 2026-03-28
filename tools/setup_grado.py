@@ -876,6 +876,15 @@ def main():
     shutil.copy2(str(tmp_path), str(db_path))
     tmp_path.unlink()
 
+    # Marcar la BD como actualizada al esquema más reciente.
+    # Así el servidor no intentará aplicar migraciones ya incorporadas
+    # en create_tables() al arrancar por primera vez.
+    try:
+        from migrate_db import stamp as _stamp_db
+        _stamp_db(str(db_path))
+    except ImportError:
+        pass  # migrate_db.py no disponible; el servidor aplicará migraciones al arrancar
+
     # Resumen
     print()
     print("=" * 55)

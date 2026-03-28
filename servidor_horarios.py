@@ -14,6 +14,13 @@ from urllib.parse import urlparse, parse_qs
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Versión del servidor — incrementar en cada release que cambie esquema o API.
+# Formato: MAJOR.MINOR.PATCH
+#   MAJOR → cambios de arquitectura o rotura de compatibilidad
+#   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
+#   PATCH → correcciones y mejoras menores
+APP_VERSION = "1.9.0"
+
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
 # CONFIG_PATH_OVERRIDE permite apuntar a la carpeta de un grado concreto:
@@ -906,6 +913,29 @@ def api_set_comentario(data):
         conn.close()
 
 
+def api_db_info(_params):
+    """GET /api/db/info — devuelve versión del servidor y versión del esquema de la BD."""
+    import sys as _sys
+    _tools = os.path.join(SCRIPT_DIR, "tools")
+    if _tools not in _sys.path:
+        _sys.path.insert(0, _tools)
+    try:
+        from migrate_db import _get_version, _ensure_version_table, LATEST_VERSION
+        conn = get_db()
+        _ensure_version_table(conn)
+        db_version = _get_version(conn)
+        conn.close()
+    except Exception:
+        db_version = None
+        LATEST_VERSION = None
+    return {
+        "app_version":    APP_VERSION,
+        "db_version":     db_version,
+        "schema_latest":  LATEST_VERSION,
+        "db_up_to_date":  db_version == LATEST_VERSION if db_version is not None else None,
+    }
+
+
 def api_db_backup(_data):
     """POST /api/db/backup — fuerza WAL checkpoint y crea copia de seguridad con timestamp."""
     import shutil, datetime
@@ -1082,6 +1112,7 @@ API_ROUTES = {
     "/api/finales/reset-auto":       ("POST", api_reset_auto_finales),
     "/api/finales/checklist":        ("GET",  api_get_finales_checklist),
     "/api/finales/checklist/toggle": ("POST", api_toggle_finales_checklist),
+    "/api/db/info":                  ("GET",  api_db_info),
     "/api/db/backup":                ("POST", api_db_backup),
     "/api/db/checkpoint":            ("POST", api_db_checkpoint),
     "/api/destacada/toggle":         ("POST", api_toggle_destacada),
@@ -1462,21 +1493,22 @@ def generate_html():
         TIPOS_ACTIVIDAD_JSON    = json.dumps(TIPOS_ACTIVIDAD, ensure_ascii=False),
         TIPO_TO_AF_JSON         = json.dumps(TIPO_TO_AF, ensure_ascii=False),
         CURSO_OPTIONS           = CURSO_OPTIONS,
+        APP_VERSION             = APP_VERSION,
     )
 
 
 # ─── MAIN ───
 if __name__ == "__main__":
     init_db_paths()
-    ensure_tipo_column_clases()
-    ensure_af_cat_column()
-    ensure_af3_fichas_column()
-    ensure_override_table()
-    ensure_festivos_table()
-    ensure_finales_table()
-    ensure_finales_checklist_table()
-    ensure_destacadas_table()
-    ensure_comentarios_table()
+
+    # Migraciones de esquema: aplica automáticamente cualquier cambio pendiente
+    # sobre la BD del grado activo. Seguro en cada arranque (idempotente).
+    import sys as _sys
+    _tools_dir = os.path.join(SCRIPT_DIR, "tools")
+    if _tools_dir not in _sys.path:
+        _sys.path.insert(0, _tools_dir)
+    from migrate_db import migrate as _migrate_db
+    _migrate_db(DB_PATH, curso_label=CURSO_LABEL)
 
     title = f"GESTOR DE HORARIOS {DEGREE_ACRONYM} — {INSTITUTION_ACRONYM}"
     print(f"\n  ╔══════════════════════════════════════════════╗")
