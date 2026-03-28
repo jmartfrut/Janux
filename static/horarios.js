@@ -517,6 +517,7 @@ function renderWeek() {
   document.getElementById('weekLabel').textContent = week.descripcion + aulaInfo;
   document.getElementById('scheduleGrid').innerHTML = buildWeekTableHTML(week, true);
   document.getElementById('weekCumulative').innerHTML = buildCumulativePanel();
+  renderComentarioSection();
   // Restaurar estado visible/oculto
   const body = document.querySelector('.cum-body');
   const btn  = document.getElementById('cumToggleBtn');
@@ -2157,7 +2158,7 @@ function formatAula(aula) { return aula ? aula.replace('#', '') : ''; }
 function updateHeaderSubtitle() {
   const ordinals = {'1':'1er','2':'2o','3':'3er','4':'4o'};
   const g = getGrupo();
-  const aula = g ? ' · Aula: ' + formatAula(g.aula) : '';
+  const aula = (g && g.aula) ? ' · Aula: ' + formatAula(g.aula) : '';
   document.getElementById('headerSubtitle').textContent = ordinals[currentCurso] + ' Curso · ' + DEGREE_ACRONYM + ' · ' + INSTITUTION_ACRONYM + aula;
 }
 function goWeek(i) { currentWeekIdx = i; render(); }
@@ -2527,6 +2528,27 @@ async function exportPDF() {
     const maxH = pdf.internal.pageSize.getHeight() - 20;
     if (ih > maxH) { ih = maxH; iw = maxH * ratio; }
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 8, 16, iw, ih);
+    // Comentario al pie (si existe)
+    const _gk1 = _comentarioKey();
+    if (_comentarioCache[_gk1] === undefined) await loadComentario(_gk1);
+    const _com1 = (_comentarioCache[_gk1] || '').trim();
+    if (_com1) {
+      const _pw1 = pdf.internal.pageSize.getWidth() - 16;
+      const _yc  = 16 + ih + 5;
+      // Línea separadora
+      pdf.setDrawColor(180, 180, 180);
+      pdf.setLineWidth(0.4);
+      pdf.line(8, _yc, 8 + _pw1, _yc);
+      // Etiqueta "Observaciones:"
+      pdf.setFontSize(9); pdf.setTextColor(100, 100, 100);
+      pdf.setFont(undefined, 'bold');
+      pdf.text('Observaciones:', 8, _yc + 5);
+      // Texto del comentario
+      pdf.setFontSize(12); pdf.setTextColor(30, 30, 30);
+      pdf.setFont(undefined, 'normal');
+      const _lines = pdf.splitTextToSize(_com1, _pw1);
+      pdf.text(_lines, 8, _yc + 11);
+    }
     setPdfProgress(90, 'Guardando archivo…');
     const fname = `horario_${currentCurso}curso_${currentCuat}_grupo${currentGroup}_sem${currentWeekIdx+1}.pdf`;
     pdf.save(fname);
@@ -2578,6 +2600,27 @@ async function exportAllPDF() {
       const maxH = pdf.internal.pageSize.getHeight() - 18;
       if (ih > maxH) { ih = maxH; iw = maxH * ratio; }
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.90), 'JPEG', 8, 14, iw, ih);
+      // Comentario al pie de cada página (si existe)
+      const _gkA = _comentarioKey();
+      if (_comentarioCache[_gkA] === undefined) await loadComentario(_gkA);
+      const _comA = (_comentarioCache[_gkA] || '').trim();
+      if (_comA) {
+        const _pwA = pdf.internal.pageSize.getWidth() - 16;
+        const _ycA = 14 + ih + 4;
+        // Línea separadora
+        pdf.setDrawColor(180, 180, 180);
+        pdf.setLineWidth(0.4);
+        pdf.line(8, _ycA, 8 + _pwA, _ycA);
+        // Etiqueta "Observaciones:"
+        pdf.setFontSize(9); pdf.setTextColor(100, 100, 100);
+        pdf.setFont(undefined, 'bold');
+        pdf.text('Observaciones:', 8, _ycA + 5);
+        // Texto del comentario
+        pdf.setFontSize(12); pdf.setTextColor(30, 30, 30);
+        pdf.setFont(undefined, 'normal');
+        const _linesA = pdf.splitTextToSize(_comA, _pwA);
+        pdf.text(_linesA, 8, _ycA + 11);
+      }
     }
     document.body.removeChild(cap);
     setPdfProgress(97, 'Guardando archivo…');
@@ -2590,6 +2633,80 @@ async function exportAllPDF() {
     console.error(e);
     alert('Error al generar PDF: ' + e.message + '\n\nComprueba la conexión a internet (necesaria la primera vez).');
   }
+}
+
+// ─── COMENTARIOS ───
+let _comentarioCache = {};   // grupo_key → texto
+
+function _comentarioKey() {
+  return currentCurso + '_' + currentCuat + '_grupo_' + currentGroup;
+}
+
+async function loadComentario(grupoKey) {
+  if (_comentarioCache[grupoKey] !== undefined) return _comentarioCache[grupoKey];
+  try {
+    const r = await fetch('/api/comentario?grupo_key=' + encodeURIComponent(grupoKey));
+    const d = await r.json();
+    _comentarioCache[grupoKey] = d.ok ? (d.comentario || '') : '';
+  } catch (e) {
+    _comentarioCache[grupoKey] = '';
+  }
+  return _comentarioCache[grupoKey];
+}
+
+async function saveComentario() {
+  const grupoKey = _comentarioKey();
+  const ta = document.getElementById('comentarioText');
+  const text = ta ? ta.value : '';
+  _comentarioCache[grupoKey] = text;
+  try {
+    const r = await fetch('/api/comentario/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grupo_key: grupoKey, comentario: text })
+    });
+    const d = await r.json();
+    if (d.ok) showToast('Comentario guardado ✓');
+    else showToast('Error al guardar: ' + (d.error || ''));
+  } catch (e) {
+    showToast('Error de conexión al guardar comentario');
+  }
+}
+
+async function renderComentarioSection() {
+  const sec = document.getElementById('comentarioSection');
+  if (!sec) return;
+  const grupoKey = _comentarioKey();
+  const text = await loadComentario(grupoKey);
+  const groupLabel = currentGroup === 'unico' ? 'Grupo Único' : 'Grupo ' + currentGroup;
+  sec.innerHTML = `
+    <details class="comentario-details" id="comentarioDetails">
+      <summary class="comentario-summary">
+        <span>&#128172; Comentarios — ${groupLabel} &nbsp;·&nbsp; ${currentCurso}º ${currentCuat}</span>
+        <span class="comentario-hint">Se incluirán al pie de los PDFs exportados</span>
+      </summary>
+      <div class="comentario-body">
+        <textarea id="comentarioText" class="comentario-textarea" rows="4"
+          placeholder="Escribe aquí observaciones o notas para este grupo. Se imprimirán al pie de los PDFs."
+        >${_escHtml(text)}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+          <button class="btn btn-outline btn-sm" onclick="
+            document.getElementById('comentarioText').value='';
+            _comentarioCache['${grupoKey}']='';
+            saveComentario();
+          ">&#128465; Borrar</button>
+          <button class="btn btn-primary btn-sm" onclick="saveComentario()">&#128190; Guardar comentario</button>
+        </div>
+      </div>
+    </details>`;
+}
+
+function _escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function showToast(msg) {

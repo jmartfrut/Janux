@@ -856,6 +856,56 @@ def ensure_destacadas_table():
     conn.close()
 
 
+def ensure_comentarios_table():
+    """Crea la tabla comentarios_horario si no existe (comentarios por grupo para PDFs)."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS comentarios_horario (
+            grupo_key  TEXT NOT NULL,
+            comentario TEXT DEFAULT '',
+            ts         TEXT DEFAULT '',
+            PRIMARY KEY (grupo_key)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def api_get_comentario(params):
+    """GET /api/comentario?grupo_key=... — devuelve el comentario del grupo."""
+    grupo_key = params.get('grupo_key', [''])[0]
+    if not grupo_key:
+        return {"ok": False, "error": "grupo_key requerido"}
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT comentario FROM comentarios_horario WHERE grupo_key=?", (grupo_key,)
+        ).fetchone()
+        return {"ok": True, "comentario": row["comentario"] if row else ""}
+    finally:
+        conn.close()
+
+
+def api_set_comentario(data):
+    """POST /api/comentario/set — guarda el comentario de un grupo."""
+    import datetime
+    grupo_key  = data.get('grupo_key', '')
+    comentario = data.get('comentario', '')
+    if not grupo_key:
+        return {"ok": False, "error": "grupo_key requerido"}
+    conn = get_db()
+    try:
+        ts = datetime.datetime.now().isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO comentarios_horario (grupo_key, comentario, ts) VALUES (?,?,?)",
+            (grupo_key, comentario, ts)
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 def api_db_backup(_data):
     """POST /api/db/backup — fuerza WAL checkpoint y crea copia de seguridad con timestamp."""
     import shutil, datetime
@@ -1035,6 +1085,8 @@ API_ROUTES = {
     "/api/db/backup":                ("POST", api_db_backup),
     "/api/db/checkpoint":            ("POST", api_db_checkpoint),
     "/api/destacada/toggle":         ("POST", api_toggle_destacada),
+    "/api/comentario":               ("GET",  api_get_comentario),
+    "/api/comentario/set":           ("POST", api_set_comentario),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero
@@ -1374,6 +1426,7 @@ if __name__ == "__main__":
     ensure_finales_table()
     ensure_finales_checklist_table()
     ensure_destacadas_table()
+    ensure_comentarios_table()
 
     title = f"GESTOR DE HORARIOS {DEGREE_ACRONYM} — {INSTITUTION_ACRONYM}"
     print(f"\n  ╔══════════════════════════════════════════════╗")
