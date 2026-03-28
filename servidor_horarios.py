@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.9.2"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -239,7 +239,6 @@ def api_get_all(params):
         }
         for r in fichas_rows
     }
-    print(f"  Fichas cargadas desde BD: {len(fichas_by_codigo)} asignaturas")
 
     # Overrides manuales de fichas (clave compuesta "codigo::grupo_key" desde sesión 6)
     override_rows = conn.execute("SELECT codigo, grupo_key FROM fichas_override").fetchall() \
@@ -253,6 +252,31 @@ def api_get_all(params):
         else []
     destacadas = [f'{r["codigo"]}::{r["grupo_num"]}::{r["act_type"]}::{r["subgrupo"]}' for r in destacadas_rows]
 
+    # ── BULK LOAD: semanas y clases en 2 queries en lugar de N+1 ─────────────
+    # Antes: 1 query por grupo (semanas) + 1 query por semana (clases) = O(grupos×semanas)
+    # Ahora: 2 queries que cubren todos los grupos y semanas de una vez
+    all_semanas = conn.execute(
+        "SELECT id, grupo_id, numero, descripcion FROM semanas ORDER BY grupo_id, numero"
+    ).fetchall()
+    semanas_by_grupo = {}
+    for s in all_semanas:
+        semanas_by_grupo.setdefault(s["grupo_id"], []).append(s)
+
+    all_clases = conn.execute("""
+        SELECT c.id, c.semana_id, c.dia, c.franja_id, c.asignatura_id,
+               c.aula, c.tipo, c.subgrupo, c.observacion,
+               c.es_no_lectivo, c.contenido, c.af_cat,
+               f.label AS franja_label, f.orden AS franja_orden,
+               a.codigo AS asig_codigo, a.nombre AS asig_nombre
+        FROM clases c
+        JOIN franjas f ON c.franja_id = f.id
+        LEFT JOIN asignaturas a ON c.asignatura_id = a.id
+        ORDER BY c.semana_id, f.orden
+    """).fetchall()
+    clases_by_semana = {}
+    for c in all_clases:
+        clases_by_semana.setdefault(c["semana_id"], []).append(dict(c))
+
     result = {
         "franjas": [dict(f) for f in franjas],
         "asignaturas": [dict(a) for a in asignaturas],
@@ -263,29 +287,15 @@ def api_get_all(params):
     }
 
     for g in grupos:
-        semanas = conn.execute(
-            "SELECT * FROM semanas WHERE grupo_id=? ORDER BY numero", (g["id"],)
-        ).fetchall()
-
+        semanas = semanas_by_grupo.get(g["id"], [])
         weeks = []
         for s in semanas:
-            clases = conn.execute("""
-                SELECT c.*, f.label as franja_label, f.orden as franja_orden,
-                       a.codigo as asig_codigo, a.nombre as asig_nombre
-                FROM clases c
-                JOIN franjas f ON c.franja_id = f.id
-                LEFT JOIN asignaturas a ON c.asignatura_id = a.id
-                WHERE c.semana_id = ?
-                ORDER BY f.orden
-            """, (s["id"],)).fetchall()
-
             weeks.append({
                 "semana_id": s["id"],
                 "numero": s["numero"],
                 "descripcion": s["descripcion"],
-                "clases": [dict(c) for c in clases]
+                "clases": clases_by_semana.get(s["id"], [])
             })
-
         result["grupos"][g["clave"]] = {
             "id": g["id"],
             "curso": g["curso"],
@@ -386,12 +396,13 @@ def api_create_clase(data):
 
 def api_delete_clase(data):
     """Delete a class"""
-    conn = get_db()
     clase_id = data.get("id")
+    if not clase_id:
+        return {"error": "ID de clase requerido"}
+    conn = get_db()
     conn.execute("DELETE FROM clases WHERE id=?", (clase_id,))
     conn.commit()
     conn.close()
-
     return {"ok": True}
 
 
@@ -1396,23 +1407,46 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        # ── Leer Content-Length de forma segura (puede faltar o ser no numérico) ──
+        def _read_length():
+            raw = self.headers.get("Content-Length") or "0"
+            try:
+                return int(raw)
+            except (ValueError, TypeError):
+                return None
+
         if parsed.path == "/api/db/import":
-            length = int(self.headers.get("Content-Length", 0))
+            length = _read_length()
+            if length is None:
+                self.send_json({"error": "Content-Length inválido o ausente"}, 400)
+                return
             raw_bytes = self.rfile.read(length)
             try:
                 result = api_db_import(raw_bytes)
                 self.send_json(result)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
+
         elif parsed.path in API_ROUTES and API_ROUTES[parsed.path][0] == "POST":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            data = json.loads(body) if body else {}
+            length = _read_length()
+            if length is None:
+                self.send_json({"error": "Content-Length inválido o ausente"}, 400)
+                return
+            # Decodificar con reemplazo para no crashear ante bytes ilegales
+            body = self.rfile.read(length).decode("utf-8", errors="replace")
+            # Parsear JSON dentro del try/except para devolver 400 en lugar de 500
+            try:
+                data = json.loads(body) if body else {}
+            except json.JSONDecodeError as e:
+                self.send_json({"error": f"JSON inválido en el cuerpo: {e}"}, 400)
+                return
             try:
                 result = API_ROUTES[parsed.path][1](data)
                 self.send_json(result)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
+
         else:
             self.send_error(404)
 
@@ -1471,12 +1505,17 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
 
 
 
+_html_cache = None  # Caché del HTML generado; la configuración no cambia en runtime
+
 def generate_html():
+    global _html_cache
+    if _html_cache is not None:
+        return _html_cache
     from jinja2 import Environment, FileSystemLoader
     templates_dir = os.path.join(SCRIPT_DIR, "templates")
     env = Environment(loader=FileSystemLoader(templates_dir), autoescape=False)
     template = env.get_template("index.html")
-    return template.render(
+    _html_cache = template.render(
         CURSO_LABEL            = CURSO_LABEL,
         DEGREE_ACRONYM         = DEGREE_ACRONYM,
         DEGREE_NAME            = DEGREE_NAME,
@@ -1495,6 +1534,7 @@ def generate_html():
         CURSO_OPTIONS           = CURSO_OPTIONS,
         APP_VERSION             = APP_VERSION,
     )
+    return _html_cache
 
 
 # ─── MAIN ───

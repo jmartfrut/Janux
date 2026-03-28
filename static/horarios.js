@@ -6,16 +6,35 @@ const DAYS = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
 const COLORS = ['color-0','color-1','color-2','color-3','color-4','color-5','color-6','color-7','color-8','color-9','color-10','color-11','color-12','color-13','color-14'];
 
 // ─── API ───
+// Wrapper centralizado para todas las llamadas al servidor.
+// Garantiza que:
+//   1. El indicador "saving" se oculta aunque falle la deserialización.
+//   2. Si el cuerpo de respuesta no es JSON válido (ej. un crash devuelve HTML),
+//      se devuelve {error: "..."} en lugar de lanzar una excepción no controlada.
+//   3. Los errores HTTP (4xx/5xx) quedan reflejados en el campo .error del resultado.
 async function api(path, body) {
   const saving = document.getElementById('saving');
   if (body !== undefined) {
     saving.style.display = 'block';
-    const res = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    saving.style.display = 'none';
-    return res.json();
+    let res;
+    try {
+      res = await fetch(path, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      });
+    } finally {
+      // Ocultar el indicador siempre, incluso si fetch lanza (red caída, etc.)
+      saving.style.display = 'none';
+    }
+    // Parsear JSON; si falla (servidor devolvió HTML u otro formato), devolver error legible
+    const data = await res.json().catch(() => ({ error: `Error del servidor (HTTP ${res.status})` }));
+    // Añadir error explícito si el servidor devolvió un código de fallo sin campo error
+    if (!res.ok && data.error === undefined) data.error = `Error del servidor (HTTP ${res.status})`;
+    return data;
   }
   const res = await fetch(path);
-  return res.json();
+  return res.json().catch(() => ({ error: `Error del servidor (HTTP ${res.status})` }));
 }
 
 async function saveDB() {
@@ -203,11 +222,16 @@ function toggleVersionDetail() {
 }
 
 async function toggleFichaOverride(codigo, action, grupoKey) {
-  await api('/api/ficha-override', { codigo, action, grupo_key: grupoKey || '' });
-  DB = await api('/api/schedule');
-  DB._overrideSet = new Set(DB.fichas_override || []);
-  DB._destacadasSet = new Set(DB.destacadas || []);
-  _subjectColorCache = null;
+  const res = await api('/api/ficha-override', { codigo, action, grupo_key: grupoKey || '' });
+  if (!res || res.error) { showToast('Error al actualizar override: ' + (res && res.error || ''), true); return; }
+  // Actualizar estado local sin recargar toda la BD (evita ~1s de latencia)
+  const key = codigo + '::' + (grupoKey || '');
+  if (!DB._overrideSet) DB._overrideSet = new Set();
+  if (action === 'set') {
+    DB._overrideSet.add(key);
+  } else {
+    DB._overrideSet.delete(key);
+  }
   renderStats();
 }
 
@@ -216,9 +240,6 @@ async function loadData() {
   DB._overrideSet = new Set(DB.fichas_override || []);
   DB._destacadasSet = new Set(DB.destacadas || []);
   _subjectColorCache = null;
-  // DEBUG: mostrar indicador de fichas cargadas
-  const fichasN = DB && DB.fichas ? Object.keys(DB.fichas).length : 0;
-  console.log('[loadData] DB.fichas cargadas:', fichasN, Object.keys(DB.fichas || {}).slice(0,3));
   populateAsignaturaSelect();
   populateFranjaSelect();
   updateGrupoOptions();
@@ -235,27 +256,40 @@ function getCurrentWeek() { return getWeeks()[currentWeekIdx]; }
 let _subjectColorCache = null;
 function buildSubjectColorCache() {
   _subjectColorCache = {};
-  // Mapear cada asig_codigo a su curso recorriendo todos los grupos
-  const codigoCurso = {};
-  for (const key of Object.keys(DB.grupos)) {
-    const g = DB.grupos[key];
-    const curso = String(g.curso);
-    for (const semana of g.semanas) {
-      for (const cls of semana.clases) {
-        if (cls.asig_codigo && !codigoCurso[cls.asig_codigo]) {
-          codigoCurso[cls.asig_codigo] = curso;
+  const cursoCodes = {};
+
+  // Ruta rápida: si DB.asignaturas tiene metadatos de curso, usarlos directamente
+  // O(asignaturas) en lugar de O(grupos × semanas × clases)
+  const tieneMetadatos = DB.asignaturas && DB.asignaturas.some(a => a.curso != null);
+  if (tieneMetadatos) {
+    for (const asig of DB.asignaturas) {
+      const curso = String(asig.curso || '0');
+      if (!cursoCodes[curso]) cursoCodes[curso] = [];
+      cursoCodes[curso].push(asig.codigo);
+    }
+  } else {
+    // Fallback para BDs legacy sin metadatos de curso: derivar desde los grupos
+    const codigoCurso = {};
+    for (const key of Object.keys(DB.grupos)) {
+      const g = DB.grupos[key];
+      const curso = String(g.curso);
+      for (const semana of g.semanas) {
+        for (const cls of semana.clases) {
+          if (cls.asig_codigo && !codigoCurso[cls.asig_codigo]) {
+            codigoCurso[cls.asig_codigo] = curso;
+          }
         }
       }
     }
+    for (const [codigo, curso] of Object.entries(codigoCurso)) {
+      if (!cursoCodes[curso]) cursoCodes[curso] = [];
+      cursoCodes[curso].push(codigo);
+    }
   }
-  // Agrupar codigos por curso (orden alfabetico para estabilidad)
-  const cursoCodes = {};
-  for (const [codigo, curso] of Object.entries(codigoCurso)) {
-    if (!cursoCodes[curso]) cursoCodes[curso] = [];
-    cursoCodes[curso].push(codigo);
-  }
+
+  // Orden alfabético dentro de cada curso para estabilidad de colores
   for (const curso of Object.keys(cursoCodes)) cursoCodes[curso].sort();
-  // Asignar color segun posicion dentro del curso
+  // Asignar color según posición dentro del curso
   for (const [curso, codes] of Object.entries(cursoCodes)) {
     codes.forEach((codigo, idx) => {
       _subjectColorCache[codigo] = COLORS[idx % COLORS.length];
@@ -677,15 +711,6 @@ function computeGroupStats(weeks) {
 }
 
 function buildActTable(allAsigs, groupKey, opts = {}) {
-  // DEBUG: verificar fichas
-  const conFichas = allAsigs.filter(a => a.fichas !== null).length;
-  const dbFichasCount = DB && DB.fichas ? Object.keys(DB.fichas).length : 0;
-  console.log('[buildActTable] asigs:', allAsigs.length, '| con fichas:', conFichas, '| DB.fichas keys:', dbFichasCount);
-  if (allAsigs.length > 0) {
-    const a0 = allAsigs[0];
-    console.log('[buildActTable] Primer asig:', a0.nombre, '| fichas:', JSON.stringify(a0.fichas), '| counts:', JSON.stringify(a0.counts));
-  }
-
   const ACT_META = {
     teoria:   { label: '&#128218; Teor&iacute;a <small class="af-code">AF1</small>',         thCls: 'act-teoria-th',  tdCls: 'act-teoria-td'  },
     af3:      { label: '&#128203; Aula Espec. <small class="af-code">AF3</small>',            thCls: 'act-ps-th',      tdCls: 'act-ps-td'      },
@@ -2396,7 +2421,6 @@ async function saveSlot() {
   const tipoVal = document.getElementById('fTipo').value.trim();
   const afCatChecked = document.querySelector('input[name="fAfCat"]:checked');
   const afCat = (tipoVal === 'EXP' && afCatChecked) ? afCatChecked.value : null;
-  console.log('[saveSlot] tipo:', tipoVal, '| af_cat a enviar:', afCat);
 
   const payload = {
     aula: document.getElementById('fAula').value.trim(),
