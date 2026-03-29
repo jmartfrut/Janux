@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.15.1"
+APP_VERSION = "1.16.0"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -250,11 +250,28 @@ def api_get_all(params):
         else []
     fichas_override = [f'{r["codigo"]}::{r["grupo_key"]}' for r in override_rows]
 
-    # Asignaturas destacadas (codigo::grupo_num::act_type::subgrupo)
-    destacadas_rows = conn.execute("SELECT codigo, grupo_num, act_type, subgrupo FROM asignaturas_destacadas").fetchall() \
-        if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'").fetchone() \
-        else []
-    destacadas = [f'{r["codigo"]}::{r["grupo_num"]}::{r["act_type"]}::{r["subgrupo"]}' for r in destacadas_rows]
+    # Asignaturas destacadas — dict {key: modo} donde modo=1 (color+badge) o modo=2 (solo badge)
+    if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'").fetchone():
+        # Compatibilidad: si la columna modo aún no existe (BD pre-v11), tratar todo como modo=1
+        dest_cols = {r[1] for r in conn.execute("PRAGMA table_info(asignaturas_destacadas)").fetchall()}
+        if "modo" in dest_cols:
+            destacadas_rows = conn.execute(
+                "SELECT codigo, grupo_num, act_type, subgrupo, modo FROM asignaturas_destacadas"
+            ).fetchall()
+            destacadas = {
+                f'{r["codigo"]}::{r["grupo_num"]}::{r["act_type"]}::{r["subgrupo"]}': (r["modo"] or 1)
+                for r in destacadas_rows
+            }
+        else:
+            destacadas_rows = conn.execute(
+                "SELECT codigo, grupo_num, act_type, subgrupo FROM asignaturas_destacadas"
+            ).fetchall()
+            destacadas = {
+                f'{r["codigo"]}::{r["grupo_num"]}::{r["act_type"]}::{r["subgrupo"]}': 1
+                for r in destacadas_rows
+            }
+    else:
+        destacadas = {}
 
     # ── BULK LOAD: semanas y clases en 2 queries en lugar de N+1 ─────────────
     # Antes: 1 query por grupo (semanas) + 1 query por semana (clases) = O(grupos×semanas)
@@ -872,23 +889,29 @@ def api_reset_manual_finales(data):
 
 def ensure_destacadas_table():
     """Crea la tabla asignaturas_destacadas si no existe.
-    Almacena tuplas (codigo, grupo_num, act_type, subgrupo) para resaltar
-    exactamente las clases con la misma actividad formativa y subgrupo."""
+    Almacena tuplas (codigo, grupo_num, act_type, subgrupo, modo) donde
+    modo=1 (cambio de color + etiqueta DTIE) o modo=2 (solo etiqueta DTIE)."""
     conn = get_db()
     # Migración: si existe la tabla con el esquema antiguo (sin act_type), se recrea.
     cols = [row[1] for row in conn.execute("PRAGMA table_info(asignaturas_destacadas)").fetchall()]
     if cols and 'act_type' not in cols:
         conn.execute("DROP TABLE IF EXISTS asignaturas_destacadas")
-        print("  Migración: tabla asignaturas_destacadas recreada con esquema act_type+subgrupo")
+        print("  Migración: tabla asignaturas_destacadas recreada con esquema act_type+subgrupo+modo")
+        cols = []
     conn.execute("""
         CREATE TABLE IF NOT EXISTS asignaturas_destacadas (
             codigo    TEXT NOT NULL,
             grupo_num TEXT NOT NULL DEFAULT '',
             act_type  TEXT NOT NULL DEFAULT '',
             subgrupo  TEXT NOT NULL DEFAULT '',
+            modo      INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (codigo, grupo_num, act_type, subgrupo)
         )
     """)
+    # Migración inline: añadir columna modo si la tabla existía sin ella (pre-v11)
+    if cols and 'modo' not in cols:
+        conn.execute("ALTER TABLE asignaturas_destacadas ADD COLUMN modo INTEGER DEFAULT 1")
+        print("  Migración: columna modo añadida a asignaturas_destacadas")
     conn.commit()
     count = conn.execute("SELECT COUNT(*) FROM asignaturas_destacadas").fetchone()[0]
     print(f"  Asignaturas destacadas: {count} entradas")
@@ -1042,8 +1065,11 @@ def api_db_import(raw_bytes):
 
 
 def api_toggle_destacada(data):
-    """POST /api/destacada/toggle — añade o elimina una tupla (codigo, grupo_num, act_type, subgrupo)
-    de asignaturas_destacadas. La estrella aplica solo a clases con la misma actividad y subgrupo."""
+    """POST /api/destacada/toggle — ciclo de 3 estados para (codigo, grupo_num, act_type, subgrupo):
+      · No existe        → INSERT modo=1  (color + etiqueta DTIE)
+      · Existe modo=1    → UPDATE modo=2  (solo etiqueta DTIE, sin cambio de color)
+      · Existe modo=2    → DELETE         (quitar marca)
+    Devuelve {ok, action:'added'|'updated'|'removed', modo:1|2|0}."""
     codigo    = data.get("codigo", "").strip()
     grupo_num = str(data.get("grupo_num", "")).strip()
     act_type  = data.get("act_type", "").strip()
@@ -1051,26 +1077,35 @@ def api_toggle_destacada(data):
     if not codigo:
         return {"ok": False, "error": "codigo requerido"}
     conn = get_db()
-    exists = conn.execute(
-        "SELECT 1 FROM asignaturas_destacadas WHERE codigo=? AND grupo_num=? AND act_type=? AND subgrupo=?",
+    row = conn.execute(
+        "SELECT modo FROM asignaturas_destacadas WHERE codigo=? AND grupo_num=? AND act_type=? AND subgrupo=?",
         (codigo, grupo_num, act_type, subgrupo)
     ).fetchone()
-    if exists:
+    if row is None:
+        # Estado 0 → modo 1
+        conn.execute(
+            "INSERT INTO asignaturas_destacadas (codigo, grupo_num, act_type, subgrupo, modo) VALUES (?,?,?,?,1)",
+            (codigo, grupo_num, act_type, subgrupo)
+        )
+        action, modo = "added", 1
+    elif (row["modo"] or 1) == 1:
+        # Modo 1 → modo 2
+        conn.execute(
+            "UPDATE asignaturas_destacadas SET modo=2 WHERE codigo=? AND grupo_num=? AND act_type=? AND subgrupo=?",
+            (codigo, grupo_num, act_type, subgrupo)
+        )
+        action, modo = "updated", 2
+    else:
+        # Modo 2 → eliminar
         conn.execute(
             "DELETE FROM asignaturas_destacadas WHERE codigo=? AND grupo_num=? AND act_type=? AND subgrupo=?",
             (codigo, grupo_num, act_type, subgrupo)
         )
-        action = "removed"
-    else:
-        conn.execute(
-            "INSERT OR IGNORE INTO asignaturas_destacadas (codigo, grupo_num, act_type, subgrupo) VALUES (?,?,?,?)",
-            (codigo, grupo_num, act_type, subgrupo)
-        )
-        action = "added"
+        action, modo = "removed", 0
     conn.commit()
     conn.close()
-    return {"ok": True, "action": action, "codigo": codigo, "grupo_num": grupo_num,
-            "act_type": act_type, "subgrupo": subgrupo}
+    return {"ok": True, "action": action, "modo": modo,
+            "codigo": codigo, "grupo_num": grupo_num, "act_type": act_type, "subgrupo": subgrupo}
 
 
 def api_move_clase(data):

@@ -238,7 +238,8 @@ async function toggleFichaOverride(codigo, action, grupoKey) {
 async function loadData() {
   DB = await api('/api/schedule');
   DB._overrideSet = new Set(DB.fichas_override || []);
-  DB._destacadasSet = new Set(DB.destacadas || []);
+  // destacadas llega como objeto {key: modo} desde /api/schedule
+  DB._destacadasMap = new Map(Object.entries(DB.destacadas || {}));
   _subjectColorCache = null;
   populateAsignaturaSelect();
   populateFranjaSelect();
@@ -355,27 +356,46 @@ function isParcial(cls) {
   return cls.tipo === 'EXP' || cls.tipo === 'EXF';
 }
 
-function isDestacada(cls) {
-  if (!DB || !DB._destacadasSet || !cls.asig_codigo) return false;
+// Devuelve 0 (no marcada), 1 (color+etiqueta DTIE) o 2 (solo etiqueta DTIE)
+function getDestacadaModo(cls) {
+  if (!DB || !DB._destacadasMap || !cls.asig_codigo) return 0;
   const actType = getActType(cls);
   const sg = cls.subgrupo || '';
-  return DB._destacadasSet.has(cls.asig_codigo + '::' + currentGroup + '::' + actType + '::' + sg);
+  const key = cls.asig_codigo + '::' + currentGroup + '::' + actType + '::' + sg;
+  return DB._destacadasMap.get(key) || 0;
+}
+
+// Compatibilidad: isDestacada sigue funcionando (true si modo 1 o 2)
+function isDestacada(cls) {
+  return getDestacadaModo(cls) > 0;
 }
 
 function buildSubjectCard(cls, color, search, interactive) {
   const parcial = isParcial(cls);
-  const destacada = !parcial && isDestacada(cls);
-  const cardColor = parcial ? 'color-parcial' : (destacada ? 'color-destacada' : color);
+  const modo = parcial ? 0 : getDestacadaModo(cls);
+  // modo=1: fondo verde DTIE; modo=2: color normal del curso
+  const cardColor = parcial ? 'color-parcial' : (modo === 1 ? 'color-destacada' : color);
   const match = search && cls.asig_nombre && cls.asig_nombre.toLowerCase().includes(search);
   const onclick = interactive ? ` onclick="openEdit(${cls.id})"` : '';
   const _actType = getActType(cls);
   const _sg = cls.subgrupo || '';
-  const dtieBtnHtml = (!parcial && interactive && cls.asig_codigo) ? `<button class="dtie-btn${destacada?' active':''}" onclick="event.stopPropagation();toggleDtie('${cls.asig_codigo}',currentGroup,'${_actType}','${_sg}')" title="${destacada?'Quitar DTIE':'Marcar como DTIE'}">&#11088;</button>` : '';
+  // Título y clase del botón según estado actual
+  const dtieTitle = modo === 0 ? 'Marcar como DTIE (color)' : modo === 1 ? 'Marcar como DTIE (solo etiqueta)' : 'Quitar DTIE';
+  const dtieBtnClass = modo === 1 ? ' active' : modo === 2 ? ' active-label' : '';
+  const dtieBtnHtml = (!parcial && interactive && cls.asig_codigo)
+    ? `<button class="dtie-btn${dtieBtnClass}" onclick="event.stopPropagation();toggleDtie('${cls.asig_codigo}',currentGroup,'${_actType}','${_sg}')" title="${dtieTitle}">&#11088;</button>`
+    : '';
   const dragAttrs = interactive ? ` draggable="true" ondragstart="startDrag(event,${cls.id})" ondragend="endDrag(event)"` : '';
+  // Badge DTIE: modo 1 → fondo semitransparente blanco sobre verde; modo 2 → badge de contorno sobre color normal
+  const dtieBadgeHtml = modo === 1
+    ? `<span class="parcial-badge dtie-badge-full">&#11088; ${DESTACADAS_BADGE}</span>`
+    : modo === 2
+    ? `<span class="parcial-badge dtie-badge-label">&#11088; ${DESTACADAS_BADGE}</span>`
+    : '';
   return `<div class="subject-card ${cardColor}${match?' search-highlight':''}"${onclick}${dragAttrs} style="cursor:${interactive?'grab':'default'}">
     ${dtieBtnHtml}
     ${parcial ? `<span class="parcial-badge">&#128221; ${cls.tipo === 'EXF' ? 'EXAMEN FINAL' : 'EXAMEN PARCIAL'}${cls.observacion ? ' &middot; '+cls.observacion : ''}</span>` : ''}
-    ${destacada ? `<span class="parcial-badge" style="color:#ffffff;background:rgba(255,255,255,.15);font-size:.6rem">&#11088; ${DESTACADAS_BADGE}</span>` : ''}
+    ${dtieBadgeHtml}
     <div class="subject-name">${cls.asig_nombre||cls.contenido||''}</div>
     ${cls.asig_codigo?`<div class="subject-code">[${cls.asig_codigo}]</div>`:''}
     <div class="subject-tags">
@@ -390,10 +410,10 @@ async function toggleDtie(codigo, grupo_num, act_type, subgrupo) {
   const res = await api('/api/destacada/toggle', {codigo, grupo_num, act_type, subgrupo});
   if (res.ok) {
     const key = codigo + '::' + grupo_num + '::' + act_type + '::' + subgrupo;
-    if (res.action === 'added') {
-      DB._destacadasSet.add(key);
+    if (res.action === 'removed') {
+      DB._destacadasMap.delete(key);
     } else {
-      DB._destacadasSet.delete(key);
+      DB._destacadasMap.set(key, res.modo);
     }
     renderWeek();
   }

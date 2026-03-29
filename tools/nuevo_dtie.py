@@ -1305,6 +1305,7 @@ def create_tables_dtie(conn):
         CREATE TABLE IF NOT EXISTS asignaturas_destacadas (
             codigo TEXT NOT NULL, grupo_num TEXT NOT NULL DEFAULT '',
             act_type TEXT NOT NULL DEFAULT '', subgrupo TEXT NOT NULL DEFAULT '',
+            modo INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (codigo, grupo_num, act_type, subgrupo)
         );
         CREATE TABLE IF NOT EXISTS comentarios_horario (

@@ -210,6 +210,14 @@ def _m10_fichas_cuatrimestre(conn, **ctx):
         conn.execute("ALTER TABLE fichas ADD COLUMN cuatrimestre TEXT DEFAULT NULL")
 
 
+def _m11_destacadas_modo(conn, **ctx):
+    """Añade columna 'modo' a asignaturas_destacadas (1=color+etiqueta, 2=solo etiqueta).
+    Los registros existentes quedan con modo=1 (comportamiento anterior preservado)."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(asignaturas_destacadas)").fetchall()}
+    if cols and "modo" not in cols:
+        conn.execute("ALTER TABLE asignaturas_destacadas ADD COLUMN modo INTEGER DEFAULT 1")
+
+
 # ─── REGISTRO DE MIGRACIONES ─────────────────────────────────────────────────
 # NUNCA modificar entradas ya publicadas. Solo añadir nuevas al final.
 
@@ -224,8 +232,9 @@ MIGRATIONS = [
     (8,  "Crea/actualiza asignaturas_destacadas con act_type y subgrupo",        _m08_asignaturas_destacadas),
     (9,  "Crea tabla comentarios_horario",                                       _m09_comentarios_horario),
     (10, "Añade columna 'cuatrimestre' a fichas (A=anual, divide AFs por 2)",   _m10_fichas_cuatrimestre),
+    (11, "Añade columna 'modo' a asignaturas_destacadas (1=color+badge, 2=solo badge)", _m11_destacadas_modo),
     # ── Próximas migraciones aquí ─────────────────────────────────────────────
-    # (11, "Descripción del cambio",  _m11_nueva_funcion),
+    # (12, "Descripción del cambio",  _m12_nueva_funcion),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

@@ -53,7 +53,10 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .subject-card{width:100%;border-radius:6px;padding:6px 8px;font-size:.76rem;line-height:1.4;position:relative}
 .dtie-btn{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.12);border:none;cursor:pointer;font-size:.85rem;line-height:1;padding:3px 4px;border-radius:4px;opacity:0;transition:opacity .15s,background .15s;color:#888}
 .subject-card:hover .dtie-btn{opacity:1}
+/* modo 1: estrella dorada con brillo (color completo) */
 .dtie-btn.active{opacity:1!important;color:#e8a020;text-shadow:0 0 8px rgba(232,160,32,.7);background:rgba(0,0,0,.15)}
+/* modo 2: estrella contorneada tenue (solo etiqueta) */
+.dtie-btn.active-label{opacity:1!important;color:#7a9dbf;background:rgba(0,0,0,.1);filter:grayscale(0.4)}
 .dtie-btn:hover{background:rgba(0,0,0,.22);color:#555}
 .color-destacada .dtie-btn{color:rgba(255,255,255,.6)}
 .color-destacada .dtie-btn.active{color:#f5b940;background:rgba(0,0,0,.2)}
@@ -86,6 +89,10 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .color-destacada .tag{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.35);color:#ffffff}
 .sch-cell-destacada{background:#ffffff!important;box-shadow:none!important}
 .parcial-badge{font-size:.68rem;font-weight:800;color:#dc2626;letter-spacing:.04em;display:block;margin-bottom:2px}
+/* Badge modo 1: sobre fondo verde (color-destacada) */
+.dtie-badge-full{color:#ffffff;background:rgba(255,255,255,.15);font-size:.6rem;font-weight:700;letter-spacing:.04em}
+/* Badge modo 2: sobre color normal del curso — contorno discreto */
+.dtie-badge-label{color:#2a5a8a;background:rgba(42,90,138,.08);border:1px solid rgba(42,90,138,.25);border-radius:3px;padding:0 3px;font-size:.6rem;font-weight:700;letter-spacing:.04em}
 .no-lectivo-label{font-size:.72rem;color:var(--text-light);font-style:italic;text-align:center;width:100%}
 .empty-label{font-size:.72rem;color:#c5cdd6;text-align:center;width:100%}
 .sch-split{padding:0;vertical-align:top}
