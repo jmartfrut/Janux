@@ -4,6 +4,30 @@ let editCtx = null;
 let _classroomsAll = [];   // aulas cargadas desde /api/classrooms
 const DAYS = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
 const COLORS = ['color-0','color-1','color-2','color-3','color-4','color-5','color-6','color-7','color-8','color-9','color-10','color-11','color-12','color-13','color-14'];
+// Paleta de colores por curso (soporta hasta 5 cursos; extensible añadiendo entradas)
+const _CURSO_PAL = [
+  {bg:'parc-curso-1', entry:'parc-entry-1', final:'final-entry-1', border:'#2563eb'},
+  {bg:'parc-curso-2', entry:'parc-entry-2', final:'final-entry-2', border:'#16a34a'},
+  {bg:'parc-curso-3', entry:'parc-entry-3', final:'final-entry-3', border:'#ca8a04'},
+  {bg:'parc-curso-4', entry:'parc-entry-4', final:'final-entry-4', border:'#db2777'},
+  {bg:'parc-curso-5', entry:'parc-entry-5', final:'final-entry-5', border:'#7c3aed'},
+];
+// Devuelve el número de cursos del grado (inyectado por el servidor; 4 si no disponible)
+function _numCursos() { return (typeof NUM_CURSOS !== 'undefined' ? NUM_CURSOS : 4); }
+// Genera el array de cursos ['1','2',...,'N'] y los mapas de color asociados
+function _buildCursosData(useEntryKey) {
+  const n = _numCursos();
+  const cursos = Array.from({length: n}, (_, i) => String(i + 1));
+  const cursoBg = {}, entryBg = {}, borderColors = {};
+  cursos.forEach((c, i) => {
+    const pal = _CURSO_PAL[i] || _CURSO_PAL[_CURSO_PAL.length - 1];
+    cursoBg[c]      = pal.bg;
+    entryBg[c]      = useEntryKey === 'final' ? pal.final : pal.entry;
+    borderColors[c] = pal.border;
+  });
+  const pairs = cursos.slice(0, -1).map((c, i) => [c, cursos[i + 1]]);
+  return { cursos, cursoBg, entryBg, borderColors, pairs };
+}
 
 // ─── API ───
 // Wrapper centralizado para todas las llamadas al servidor.
@@ -979,11 +1003,8 @@ function renderParciales() {
   const cuat = currentCuat;
   const dias = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
   const diaCls = ['lun','mar','mie','jue','vie'];
-  const cursos = ['1','2','3','4'];
-  const cursoLabel = {'1':'1º','2':'2º','3':'3º','4':'4º'};
-  const cursoBg = {'1':'parc-curso-1','2':'parc-curso-2','3':'parc-curso-3','4':'parc-curso-4'};
-  const entryBg = {'1':'parc-entry-1','2':'parc-entry-2','3':'parc-entry-3','4':'parc-entry-4'};
-  const borderColors = {'1':'#2563eb','2':'#16a34a','3':'#ca8a04','4':'#db2777'};
+  const { cursos, cursoBg, entryBg, borderColors, pairs: _pairsP } = _buildCursosData('parc');
+  const cursoLabel = Object.fromEntries(cursos.map(c => [c, c + 'º']));
   // Franjas 1-3 = mañana, 4-6 = tarde
   function getTurno(franjaOrden) { return franjaOrden <= 3 ? 'mañana' : 'tarde'; }
 
@@ -1032,7 +1053,7 @@ function renderParciales() {
   // conflictList: array de {sNum, dia, turno, cursosAfectados[], detalle}
   const conflictSet = new Set();
   const conflictList = [];
-  const pairs = [['1','2'],['2','3'],['3','4']];
+  const pairs = _pairsP;
 
   for (const sNum of semanas) {
     for (const dia of dias) {
@@ -1246,11 +1267,8 @@ function renderFinales() {
 
   const periods    = getFinalesPeriods();
   const period     = periods[currentFinalPeriod];
-  const cursos     = ['1','2','3','4'];
-  const cursoLabel = {'1':'1&ordm;','2':'2&ordm;','3':'3&ordm;','4':'4&ordm;'};
-  const cursoBg    = {'1':'parc-curso-1','2':'parc-curso-2','3':'parc-curso-3','4':'parc-curso-4'};
-  const entryBg    = {'1':'final-entry-1','2':'final-entry-2','3':'final-entry-3','4':'final-entry-4'};
-  const borderColors = {'1':'#2563eb','2':'#16a34a','3':'#ca8a04','4':'#db2777'};
+  const { cursos, cursoBg, entryBg, borderColors, pairs: _pairsF } = _buildCursosData('final');
+  const cursoLabel = Object.fromEntries(cursos.map(c => [c, c + '&ordm;']));
   const DIAS_LABEL = ['Lun','Mar','Mi&eacute;','Jue','Vie','S&aacute;b'];
   const DIAS_CLS   = ['lun','mar','mie','jue','vie','sab'];
   const MONTH_ABBR = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -1268,7 +1286,7 @@ function renderFinales() {
   // Detectar conflictos entre cursos CONSECUTIVOS mismo día + turno
   const conflictSet  = new Set();
   const conflictList = [];
-  const pairs = [['1','2'],['2','3'],['3','4']];
+  const pairs = _pairsF;
   for (const week of weeks) {
     for (const dayObj of week) {
       if (!dayObj.inPeriod) continue;
@@ -1292,7 +1310,7 @@ function renderFinales() {
   }
 
   // Contar exámenes por curso dentro del período
-  const countByCurso = {'1':0,'2':0,'3':0,'4':0};
+  const countByCurso = Object.fromEntries(cursos.map(c => [c, 0]));
   const [psy,psm,psd] = period.start.split('-').map(Number);
   const [pey,pem,ped] = period.end.split('-').map(Number);
   const pStart = new Date(psy, psm-1, psd);
@@ -1473,7 +1491,7 @@ function renderFinales() {
       </label>`;
     }).join('');
 
-    const hdr = {'1':'parc-curso-1','2':'parc-curso-2','3':'parc-curso-3','4':'parc-curso-4'}[curso];
+    const hdr = cursoBg[curso];
     return `<div class="final-checklist-col">
       <div class="final-checklist-col-header ${hdr}">${curso}&ordm; Curso &mdash; ${asigsCurso.length} asig.</div>
       <div class="final-checklist-col-body">${items || '<span style="color:var(--text-light);font-size:.75rem;padding:4px 2px;display:block">Sin asignaturas</span>'}</div>
@@ -1595,7 +1613,9 @@ function _runDistribution(allDays, subsByCurso, dayUsage, allowRelaxed) {
   const result = [];
 
   // Días ya asignados por curso (manual + auto en construcción), para control de días consecutivos
-  const daysByCurso = { '1':[], '2':[], '3':[], '4':[] };
+  const daysByCurso = Object.fromEntries(
+    Array.from({length: _numCursos()}, (_, i) => [String(i + 1), []])
+  );
   for (const [iso, usage] of Object.entries(dayUsage)) {
     if (usage.m) { const c = String(usage.m); if (daysByCurso[c]) daysByCurso[c].push(iso); }
     if (usage.t) { const c = String(usage.t); if (daysByCurso[c]) daysByCurso[c].push(iso); }
@@ -1617,7 +1637,15 @@ function _runDistribution(allDays, subsByCurso, dayUsage, allowRelaxed) {
      Prioriza el turno sin curso consecutivo; ambos ocupados → null. */
   const _getSlotSemiRelaxed = (iso, curso) => {
     const day = dayUsage[iso] || { m: null, t: null };
-    const consec = { '1':['2'], '2':['1','3'], '3':['2','4'], '4':['3'] };
+    const n = _numCursos();
+    const consec = Object.fromEntries(
+      Array.from({length: n}, (_, i) => {
+        const c = String(i + 1), neighbors = [];
+        if (i > 0) neighbors.push(String(i));
+        if (i < n - 1) neighbors.push(String(i + 2));
+        return [c, neighbors];
+      })
+    );
     if (String(day.m) === curso || String(day.t) === curso) return null;
     const mHasConsec = day.m && (consec[curso]||[]).includes(String(day.m));
     const tHasConsec = day.t && (consec[curso]||[]).includes(String(day.t));
@@ -1673,14 +1701,23 @@ function _runDistribution(allDays, subsByCurso, dayUsage, allowRelaxed) {
   const unplaced = [];
   const strict = (iso, c) => _getSlot(dayUsage, iso, c);
 
+  // Orden de colocación estricta: intercala cursos extremos primero ([1,2,N,N-1,...,3])
+  const _strictOrder = (() => {
+    const n = _numCursos();
+    const front = ['1', '2'];
+    const back  = Array.from({length: n - 2}, (_, i) => String(n - i)).filter(c => !front.includes(c));
+    return [...front, ...back];
+  })();
+
   if (!allowRelaxed) {
     // ── Enero / Junio: un único intento estricto para todos los cursos ────────
-    for (const item of buildItems(['1', '2', '4', '3'])) {
+    for (const item of buildItems(_strictOrder)) {
       const ok = tryPlace(item, strict, 1, false);
       if (!ok) unplaced.push(item);
     }
   } else {
     // ── Julio (extraordinario): relajación progresiva por grupos ─────────────
+    const n = _numCursos();
 
     // Grupo A: 1º y 2º — estricta primero, semi-relajada como fallback
     const failedA = [];
@@ -1693,9 +1730,10 @@ function _runDistribution(allDays, subsByCurso, dayUsage, allowRelaxed) {
       if (!ok) unplaced.push(item);
     }
 
-    // Grupo B: 4º — semi-relajada, ultra-relajada como fallback
+    // Grupo B: 4º y cursos superiores — semi-relajada, ultra-relajada como fallback
+    const grpB = Array.from({length: n - 3}, (_, i) => String(n - i)).filter(c => c !== '3');
     const failedB = [];
-    for (const item of buildItems(['4'])) {
+    for (const item of buildItems(grpB)) {
       const ok = tryPlace(item, _getSlotSemiRelaxed, 2, false);
       if (!ok) failedB.push(item);
     }
@@ -1704,7 +1742,7 @@ function _runDistribution(allDays, subsByCurso, dayUsage, allowRelaxed) {
       if (!ok) unplaced.push(item);
     }
 
-    // Grupo C: 3º — ultra-relajada directamente
+    // Grupo C: 3º — ultra-relajada directamente (consecutivo de 2º y 4º)
     for (const item of buildItems(['3'])) {
       const ok = tryPlace(item, _getSlotSemiRelaxed, 3, true);
       if (!ok) unplaced.push(item);
@@ -1728,8 +1766,9 @@ async function autoDistributeExams() {
 
     // 2. Asignaturas marcadas por curso (excluir desmarcadas)
     const asigMap = _getAsigsByCursoCuat(cuatChk);
+    const _allCursos = Array.from({length: _numCursos()}, (_, i) => String(i + 1));
     const subsByCurso = {};
-    for (const curso of ['1','2','3','4']) {
+    for (const curso of _allCursos) {
       subsByCurso[curso] = [...(asigMap[curso]?.entries() || [])]
         .filter(([cod]) => !FINALES_EXCLUIDAS.has(`${currentFinalPeriod}|${curso}|${cod}`))
         .map(([cod, nom]) => ({ cod, nom }));
@@ -1749,7 +1788,7 @@ async function autoDistributeExams() {
 
     // 4. Eliminar de la lista de "por colocar" las que ya están en manual
     const manualSet = new Set(manualExams.map(f => `${f.curso}|${f.asig_nombre}`));
-    for (const curso of ['1','2','3','4'])
+    for (const curso of _allCursos)
       subsByCurso[curso] = subsByCurso[curso].filter(s => !manualSet.has(`${curso}|${s.nom}`));
 
     // 5. Inicializar dayUsage con los exámenes manuales

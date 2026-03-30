@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.16.0"
+APP_VERSION = "1.16.2"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1589,6 +1589,7 @@ def generate_html():
         TIPOS_ACTIVIDAD_JSON    = json.dumps(TIPOS_ACTIVIDAD, ensure_ascii=False),
         TIPO_TO_AF_JSON         = json.dumps(TIPO_TO_AF, ensure_ascii=False),
         CURSO_OPTIONS           = CURSO_OPTIONS,
+        NUM_CURSOS              = _num_cursos,
         APP_VERSION             = APP_VERSION,
     )
     return _html_cache

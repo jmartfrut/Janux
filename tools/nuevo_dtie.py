@@ -1982,12 +1982,13 @@ cp "$DB_SRC" "$DB_TMP" 2>/dev/null || true
 
 cleanup() {{
   kill "$SERVER_PID" 2>/dev/null
+  wait "$SERVER_PID" 2>/dev/null
   if [ -f "$DB_TMP" ]; then
     cp "$DB_TMP" "$DB_SRC"
     echo "Base de datos guardada."
   fi
 }}
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" \\
@@ -2030,9 +2031,10 @@ cp "$DB_SRC" "$DB_TMP" 2>/dev/null || true
 
 cleanup() {{
   kill "$SERVER_PID" 2>/dev/null
+  wait "$SERVER_PID" 2>/dev/null
   [ -f "$DB_TMP" ] && cp "$DB_TMP" "$DB_SRC" && echo "BD guardada."
 }}
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" --grado "grados/{siglas}" &
