@@ -297,6 +297,7 @@ tr.conflict-row td{background:#fff3f5}
   <h2>4 · Distribución de asignaturas por curso</h2>
   <div class="desc">Asigna a cada asignatura DTIE el curso y cuatrimestre en el nuevo grado. Mismo formato que el CSV de grado convencional. Las filas con ⚠️ indican solapamiento horario.</div>
 
+  <div id="destacadas-banner" style="display:none;background:#fff8ed;border:1.5px solid #f5c070;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:.82rem;color:#7a4a00;line-height:1.5"></div>
   <div id="conflict-banner" class="conflict-banner"></div>
 
   <!-- Barra de importación CSV -->
@@ -338,7 +339,7 @@ tr.conflict-row td{background:#fff3f5}
 
   <div class="actions">
     <button class="btn btn-secondary" onclick="goStep(3)">← Anterior</button>
-    <button class="btn btn-primary" onclick="goStep(5)">Siguiente →</button>
+    <button class="btn btn-primary" onclick="validarYSiguientePaso4()">Siguiente →</button>
   </div>
 </div>
 
@@ -409,6 +410,31 @@ function goStep(n) {
   if (n === 3) buildEstructuraTable();
   if (n === 4) buildDistTable();
   if (n === 5) buildSummary();
+}
+
+// ─── VALIDACIÓN PASO 4 → 5 ───────────────────────────────────────────────────
+function validarYSiguientePaso4() {
+  if (!_csvData) {
+    // Resaltar la barra de importación e informar al usuario
+    const bar = document.querySelector('#step4 > div[style*="background:#f0f4f8"]');
+    const status = document.getElementById('csv-import-status');
+    if (bar) {
+      bar.style.borderColor = '#c0392b';
+      bar.style.background  = '#fff0f0';
+      setTimeout(() => {
+        bar.style.borderColor = '#c8d4e0';
+        bar.style.background  = '#f0f4f8';
+      }, 3000);
+    }
+    if (status) {
+      status.innerHTML = '<span style="color:#c0392b;font-weight:600">⚠️ Debes importar el CSV de distribución antes de continuar.</span>';
+      setTimeout(() => {
+        status.innerHTML = 'Importa un CSV tipo <code style="background:#e8eef4;padding:1px 5px;border-radius:3px">fichas_DTIE_GIDI_GIM.csv</code> para precargar la distribución.';
+      }, 4000);
+    }
+    return;
+  }
+  goStep(5);
 }
 
 // ─── CARGAR GRADOS DISPONIBLES ───────────────────────────────────────────────
@@ -567,11 +593,17 @@ function buildDistTable() {
     const cuatBase = ['1C', '2C'];
     if (!cuatBase.includes(defCuat)) cuatBase.push(defCuat);
     const cuatHtml = cuatBase.map(o => `<option value="${o}"${defCuat===o?' selected':''}>${o}</option>`).join('');
-    // Indicador visual para códigos no encontrados en BD
-    const notFound = a.found === false;
-    const warnIcon = notFound ? '<span class="conflict-icon" title="Código no encontrado en la BD de origen"> ⚠</span>' : '';
+    // Indicador visual para códigos no encontrados en BD o no marcados con ⭐
+    const notFound      = a.found === false;
+    const notDestacada  = a.found !== false && a.destacada === false;
+    const warnIcon = notFound
+      ? '<span class="conflict-icon" title="Código no encontrado en la BD de origen"> ⚠</span>'
+      : (notDestacada
+          ? '<span style="color:#e67e00;font-weight:700;cursor:default" title="Esta asignatura existe en la BD pero NO está marcada con ⭐ — no se copiará al horario DTIE">⭐❌</span>'
+          : '');
     const tr = document.createElement('tr');
-    if (notFound) tr.style.background = '#fff3f5';
+    if (notFound)     tr.style.background = '#fff3f5';
+    if (notDestacada) tr.style.background = '#fff8ed';
     tr.dataset.codigo    = a.codigo;
     tr.dataset.fuente    = a.fuente;
     tr.dataset.grupo_num = a.grupo_num || '';
@@ -598,6 +630,40 @@ function buildDistTable() {
     tbody.appendChild(tr);
   });
   checkConflicts();
+  checkDestacadasWarning();
+}
+
+function checkDestacadasWarning() {
+  const banner = document.getElementById('destacadas-banner');
+  if (!banner) return;
+
+  // Solo aplica cuando hay CSV cargado
+  if (!_csvData) { banner.innerHTML = ''; banner.style.display = 'none'; return; }
+
+  const noDestacadas  = _csvData.filter(a => a.found !== false && a.destacada === false);
+  const noEncontradas = _csvData.filter(a => a.found === false);
+
+  const partes = [];
+  if (noDestacadas.length > 0) {
+    const nombres = noDestacadas.map(a => `<strong>${esc(a.codigo)}</strong> (${esc(a.nombre||'')})`).join(', ');
+    partes.push(
+      `⭐❌ <strong>${noDestacadas.length} asignatura${noDestacadas.length>1?'s':''} del CSV no está${noDestacadas.length>1?'n':''} marcada${noDestacadas.length>1?'s':''} con ⭐ en el grado de origen — <u>no se copiarán al horario DTIE</u>.</strong><br>${nombres}`
+    );
+  }
+  if (noEncontradas.length > 0) {
+    const nombres = noEncontradas.map(a => `<strong>${esc(a.codigo)}</strong>`).join(', ');
+    partes.push(
+      `⚠️ <strong>${noEncontradas.length} código${noEncontradas.length>1?'s':''} no encontrado${noEncontradas.length>1?'s':''} en la BD de origen.</strong><br>${nombres}`
+    );
+  }
+
+  if (partes.length > 0) {
+    banner.innerHTML = partes.join('<hr style="border:none;border-top:1px solid #f5c6a0;margin:6px 0">');
+    banner.style.display = '';
+  } else {
+    banner.innerHTML = '';
+    banner.style.display = 'none';
+  }
 }
 
 function getDistribucion() {
@@ -635,7 +701,11 @@ function checkConflicts() {
     getSchedule(d.codigo, d.fuente).forEach(s => {
       const sk = `${s.sem}_${s.dia}_${s.fr}`;
       if (!slotMap[key][sk]) slotMap[key][sk] = [];
-      slotMap[key][sk].push({codigo: d.codigo, nombre: d.nombre, sem: s.sem, dia: s.dia, fl: s.fl || ''});
+      // Deduplicar por codigo: evita falsos conflictos si el mismo código
+      // aparece dos veces en la tabla (p.ej. marcado con distintos grupo_num)
+      if (!slotMap[key][sk].some(e => e.codigo === d.codigo)) {
+        slotMap[key][sk].push({codigo: d.codigo, nombre: d.nombre, sem: s.sem, dia: s.dia, fl: s.fl || ''});
+      }
     });
   });
 
@@ -1153,7 +1223,16 @@ def api_leer_dtie(data):
             {order_by}
         """).fetchall()
 
-        asignaturas = [dict(r) for r in rows]
+        asignaturas_raw = [dict(r) for r in rows]
+
+        # Deduplicar por codigo: la misma asignatura puede estar marcada con
+        # distintos grupo_num/act_type en asignaturas_destacadas, lo que generaría
+        # filas duplicadas que rompen la detección de solapamientos en el cliente.
+        _seen_codigos: dict = {}
+        for _a in asignaturas_raw:
+            if _a['codigo'] not in _seen_codigos:
+                _seen_codigos[_a['codigo']] = _a
+        asignaturas = list(_seen_codigos.values())
 
         # Para cada asignatura: inferir curso/cuatrimestre y grupo desde las clases reales
         # (más robusto que depender del valor grupo_num almacenado, que puede ser solo un número)
@@ -1791,6 +1870,17 @@ def _api_resolver_csv_dtie_impl(data):
         curso_origen = asig['curso']        if 'curso'        in a_cols else None
         cuat_origen  = asig['cuatrimestre'] if 'cuatrimestre' in a_cols else None
 
+        # Comprobar si está marcada como destacada (⭐) en la BD de origen
+        has_dest_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'"
+        ).fetchone()
+        if has_dest_table:
+            es_destacada = conn.execute(
+                "SELECT 1 FROM asignaturas_destacadas WHERE codigo = ? LIMIT 1", (codigo,)
+            ).fetchone() is not None
+        else:
+            es_destacada = False
+
         # Fichas docentes
         ficha = conn.execute(
             "SELECT creditos, af1, af2, af4, af5, af6 FROM fichas WHERE asignatura_id = ?",
@@ -1851,7 +1941,8 @@ def _api_resolver_csv_dtie_impl(data):
             'af4':      ficha['af4']      if ficha else 0,
             'af5':      ficha['af5']      if ficha else 0,
             'af6':      ficha['af6']      if ficha else 0,
-            'found': True,
+            'found':      True,
+            'destacada':  es_destacada,
         })
 
     for conn in conns.values():

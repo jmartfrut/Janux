@@ -5,8 +5,15 @@ cd /d "%~dp0.."
 echo ----------------------------------------
 echo  Janux - Asistente de Nuevo Grado
 echo ----------------------------------------
+REM Detectar comando Python (python o py launcher de Windows)
+set "PYTHON_CMD="
 python --version > nul 2>&1
-if errorlevel 1 (
+if not errorlevel 1 set "PYTHON_CMD=python"
+if not defined PYTHON_CMD (
+    py --version > nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=py"
+)
+if not defined PYTHON_CMD (
     echo.
     echo [ERROR] Python no esta instalado o no esta en el PATH.
     echo.
@@ -20,5 +27,5 @@ if errorlevel 1 (
 )
 echo [INFO] Arrancando asistente en http://localhost:8091 ...
 start "" http://localhost:8091
-python tools\nuevo_grado.py
+%PYTHON_CMD% tools\nuevo_grado.py
 pause

@@ -220,6 +220,29 @@ def sync_clases(csv_rows, src_conns_by_siglas, dtie_conn, dry_run=False):
             continue
         dtie_asig_id = dtie_asig[0]
 
+        # Verificar que la asignatura está marcada con ⭐ en la BD origen.
+        # Si no lo está, borrar sus clases actuales del DTIE y pasar a la siguiente.
+        # Así se limpian clases copiadas anteriormente de asignaturas que ya no son destacadas.
+        if table_exists(src_conn, 'asignaturas_destacadas'):
+            starred = src_conn.execute(
+                "SELECT 1 FROM asignaturas_destacadas WHERE codigo = ? LIMIT 1",
+                (codigo,)
+            ).fetchone()
+            if not starred:
+                if not dry_run:
+                    n_limpiadas = dtie_conn.execute(
+                        "DELETE FROM clases WHERE asignatura_id = ?",
+                        (dtie_asig_id,)
+                    ).rowcount
+                    total_borradas += n_limpiadas
+                    if n_limpiadas:
+                        log(f"{codigo} ({nombre}): sin ⭐ en {grado_origen} — {n_limpiadas} clases eliminadas del DTIE", 'warn')
+                    else:
+                        log(f"{codigo} ({nombre}): sin ⭐ en {grado_origen}, se omite", 'warn')
+                else:
+                    log(f"{codigo} ({nombre}): sin ⭐ en {grado_origen}, se omitiría", 'warn')
+                continue
+
         # Asignatura en la fuente
         src_asig = src_conn.execute(
             "SELECT id FROM asignaturas WHERE codigo = ?", (codigo,)
@@ -271,6 +294,25 @@ def sync_clases(csv_rows, src_conns_by_siglas, dtie_conn, dry_run=False):
             JOIN semanas s ON s.id = c.semana_id
             WHERE s.grupo_id = ? AND c.asignatura_id = ?
         """, (src_grupo_id, src_asig_id)).fetchall()
+
+        # Filtrar subgrupos: copiar solo los marcados con ⭐ en la BD origen.
+        # Mismo criterio que nuevo_dtie.py (paso 7). Se consulta asignaturas_destacadas
+        # usando la clave (clave) del grupo fuente como grupo_num.
+        if table_exists(src_conn, 'asignaturas_destacadas'):
+            src_grupo_clave_row = src_conn.execute(
+                "SELECT clave FROM grupos WHERE id = ?", (src_grupo_id,)
+            ).fetchone()
+            if src_grupo_clave_row:
+                src_grupo_clave = src_grupo_clave_row[0]
+                starred_rows = src_conn.execute(
+                    "SELECT DISTINCT subgrupo FROM asignaturas_destacadas "
+                    "WHERE codigo = ? AND grupo_num = ?",
+                    (codigo, src_grupo_clave)
+                ).fetchall()
+                starred_subgrupos = {r[0] for r in starred_rows}
+                if starred_subgrupos:
+                    # c[3] = columna subgrupo en el SELECT anterior
+                    clases = [c for c in clases if c[3] in starred_subgrupos]
 
         n_copiadas = 0
         for clase in clases:

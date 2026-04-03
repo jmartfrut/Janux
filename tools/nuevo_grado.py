@@ -1431,11 +1431,30 @@ wait "$SERVER_PID"
 
     # ── Windows .bat ────────────────────────────────────────────────────────
     bat_content = f"""@echo off
+chcp 65001 > nul
 REM Launcher — {siglas} ({curso_label})
 set DIR=%~dp0
 set ROOT=%DIR%..\\..
 set DB_SRC=%DIR%{db_name}
 set DB_TMP=%TEMP%\\{db_stem}_{siglas}.db
+
+REM Detectar comando Python (python o py launcher de Windows)
+set "PYTHON_CMD="
+python --version > nul 2>&1
+if not errorlevel 1 set "PYTHON_CMD=python"
+if not defined PYTHON_CMD (
+    py --version > nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=py"
+)
+if not defined PYTHON_CMD (
+    echo.
+    echo [ERROR] Python no esta instalado o no esta en el PATH.
+    echo  1. Ve a https://www.python.org/downloads/
+    echo  2. Marca "Add Python to PATH" durante la instalacion
+    echo.
+    pause
+    exit /b 1
+)
 
 copy /Y "%DB_SRC%" "%DB_TMP%" >nul 2>&1
 
@@ -1443,7 +1462,7 @@ set DB_PATH_OVERRIDE=%DB_TMP%
 set CURSO_LABEL={curso_label}
 set CONFIG_PATH_OVERRIDE=%DIR%
 start "" "http://localhost:{port}"
-python "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
+%PYTHON_CMD% "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
 
 copy /Y "%DB_TMP%" "%DB_SRC%" >nul 2>&1
 echo Base de datos guardada.
@@ -1785,15 +1804,13 @@ def _wait_and_open(url, timeout=10):
         try:
             urllib.request.urlopen(ping, timeout=1)
             print(f'  ✓ Servidor listo — abriendo navegador...')
-            result = subprocess.call(['open', url])
-            print(f'  open retornó: {result}')
+            webbrowser.open(url)
             return
         except Exception as e:
             print(f'  ping fallido: {e}')
             time.sleep(0.1)
     print(f'  Timeout — abriendo navegador de todas formas...')
-    result = subprocess.call(['open', url])
-    print(f'  open retornó: {result}')
+    webbrowser.open(url)
 
 
 def main():
