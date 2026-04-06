@@ -685,16 +685,27 @@ def import_clases_desde_excel(conn, clases_importadas):
                 continue
             sem_id = sem_row[0]
 
-            existing = conn.execute(
-                "SELECT id, es_no_lectivo FROM clases "
-                "WHERE semana_id=? AND dia=? AND franja_id=?",
+            # Comprobar primero si el slot está marcado como no-lectivo
+            # (la entrada no-lectivo tiene subgrupo='', independientemente del desdoble)
+            nolect_row = conn.execute(
+                "SELECT id FROM clases "
+                "WHERE semana_id=? AND dia=? AND franja_id=? AND es_no_lectivo=1",
                 (sem_id, dia, franja_id)
+            ).fetchone()
+            if nolect_row:
+                count_nolect += 1
+                continue
+
+            # Buscar fila coincidente filtrando también por subgrupo:
+            # así cada entrada de un desdoble se trata de forma independiente
+            # y no sobreescribe las demás entradas del mismo slot.
+            existing = conn.execute(
+                "SELECT id FROM clases "
+                "WHERE semana_id=? AND dia=? AND franja_id=? AND subgrupo=?",
+                (sem_id, dia, franja_id, subgrupo)
             ).fetchone()
 
             if existing:
-                if existing[1]:          # día no-lectivo en el nuevo año → no tocar
-                    count_nolect += 1
-                    continue
                 conn.execute(
                     "UPDATE clases SET asignatura_id=?, aula=?, tipo=?, subgrupo=?, "
                     "observacion='', es_no_lectivo=0, contenido=? WHERE id=?",
