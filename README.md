@@ -1,10 +1,6 @@
 
 <p align="center">
-  <img src="docs/logo_janux.svg" alt="Janux" width="180"/>
-</p>
-
-<p align="center">
-  <a href="docs/presentacion.pdf">Ver presentación →</a>
+  <img src="docs/logo_janux.svg" alt="Janux" width="400"/>
 </p>
 
 ---
@@ -37,47 +33,54 @@ Arquitectura mínima: servidor Python local + base de datos SQLite + frontend HT
 
 ```
 Janux/
-├── servidor_horarios.py        # Servidor único, multi-grado
+├── servidor_horarios.py          # Servidor único, multi-grado
 ├── requirements.txt
 ├── launchers/
-│   ├── Janux.command           # macOS — asistente nuevo grado / DTIE
-│   ├── Janux.sh                # Linux
-│   └── Janux.bat               # Windows
+│   ├── Janux.command             # macOS — asistente nuevo grado / DTIE
+│   ├── Janux.sh                  # Linux
+│   └── Janux.bat                 # Windows
 ├── horarios/
-│   ├── GIM/
-│   │   ├── config.json         # Configuración completa del grado
-│   │   ├── horarios_2627.db    # BD del curso 2026-2027
-│   │   └── Iniciar Horarios GIM 2627.command
-│   └── GIDI/
-│       ├── config.json
-│       ├── horarios.db
-│       └── Iniciar GIDI.command
+│   └── GIM/                      # Ejemplo de grado (estructura replicable)
+│       ├── config.json           # Configuración completa del grado
+│       ├── horarios.db           # Base de datos SQLite del curso
+│       ├── fichas_GIM.csv        # Fichas docentes del grado
+│       ├── Iniciar Horarios GIM.command
+│       ├── Iniciar Horarios GIM.sh
+│       └── Iniciar Horarios GIM.bat
 ├── config/
-│   ├── classrooms.json         # Catálogo de aulas (datalist)
-│   ├── fichas_GIM.csv          # Fichas docentes GIM
-│   ├── fichas_GIDI.csv         # Fichas docentes GIDI
-│   ├── tipos_actividad.json    # Tipos de actividad estándar
-│   └── titulaciones.json       # Catálogo de titulaciones UPCT
+│   ├── classrooms.json           # Catálogo de aulas (datalist)
+│   ├── fichas_GIM.csv            # Fichas docentes GIM
+│   ├── fichas_GIDI.csv           # Fichas docentes GIDI
+│   ├── fichas_DTIE_GIDI_GIM.csv  # Fichas docentes DTIE combinado
+│   ├── tipos_actividad.json      # Tipos de actividad estándar
+│   ├── titulaciones.json         # Catálogo de titulaciones UPCT
+│   ├── weeks.json                # Definición de semanas del curso
+│   └── calendario_academico_26_27.xlsx
 ├── tools/
-│   ├── nuevo_grado.py          # Wizard web nuevo grado (puerto 8092)
-│   ├── nuevo_dtie.py           # Wizard web doble grado DTIE (puerto 8092)
-│   ├── setup_grado.py          # Inicializa BD desde config.json + CSV
-│   ├── importar_horarios.py    # Parser de Excel de horarios UPCT
-│   ├── exportar_excel.py       # Exporta BD → Excel plantilla UPCT
-│   └── exportar_finales_pdf.py # Genera PDF oficial de exámenes finales
+│   ├── nuevo_grado.py            # Wizard web nuevo grado (puerto 8092)
+│   ├── nuevo_dtie.py             # Wizard web doble grado DTIE (puerto 8092)
+│   ├── setup_grado.py            # Inicializa BD desde config.json + CSV
+│   ├── importar_horarios.py      # Parser de Excel de horarios UPCT
+│   ├── exportar_excel.py         # Exporta BD → Excel plantilla UPCT
+│   ├── exportar_institucional.py # Exporta en formato institucional UPCT
+│   ├── exportar_finales_pdf.py   # Genera PDF oficial de exámenes finales
+│   ├── sync_dtie.py              # Sincroniza horarios DTIE desde grados origen
+│   ├── reload_fichas.py          # Recarga fichas docentes en la BD
+│   ├── migrate_db.py             # Migraciones de esquema entre versiones
+│   └── regenerar_launchers.py    # Regenera los launchers de un grado
 ├── static/
-│   ├── horarios.js             # Frontend JS completo
+│   ├── horarios.js               # Frontend JS completo
 │   └── horarios.css
 ├── templates/
 │   └── index.html
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
-├── docs/                       # Logos, presentación, documentación
-└── backups/                    # Copias de seguridad (.db con timestamp)
+├── docs/                         # Logos, presentación, documentación
+└── backups/                      # Copias de seguridad (.db con timestamp)
 ```
 
-> La carpeta `horarios/` no está versionada — se genera localmente por cada instalación.
+> Cada grado adicional (GIDI, DTIE…) sigue la misma estructura que `horarios/GIM/` y se genera con el asistente Janux o con `tools/setup_grado.py`.
 
 ---
 
@@ -267,3 +270,9 @@ La BD se monta como volumen en `/app/data/`. El servidor la localiza mediante la
 ## Licencia
 
 MIT © 2026 Jesús Martínez
+
+---
+
+<p align="center">
+  <img src="docs/logo_upct.png" alt="Universidad Politécnica de Cartagena" width="220"/>
+</p>
