@@ -1,11 +1,11 @@
 
 <p align="center">
-  <a href="docs/presentacion.pdf">
-    <img src="docs/img/slide_01.jpg" alt="Janux — Ver presentación" width="100%"/>
-  </a>
+  <img src="docs/logo_janux.svg" alt="Janux" width="180"/>
 </p>
 
-> 💡 **Haz clic en la imagen** para abrir la presentación en el navegador.
+<p align="center">
+  <a href="docs/presentacion.pdf">Ver presentación →</a>
+</p>
 
 ---
 
