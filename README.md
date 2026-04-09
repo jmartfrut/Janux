@@ -274,5 +274,5 @@ MIT © 2026 Jesús Martínez
 ---
 
 <p align="center">
-  <img src="docs/logo_upct.png" alt="Universidad Politécnica de Cartagena" width="340"/>
+  <img src="docs/logo_upct.png" alt="Universidad Politécnica de Cartagena" width="100%"/>
 </p>
