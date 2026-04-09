@@ -10,10 +10,10 @@ Uso (estructura plana, carpeta raíz):
   python3 setup_grado.py asignaturas.csv             → crea BD (config.json en raíz)
   python3 setup_grado.py asignaturas.csv --force     → sobreescribe sin confirmar
 
-Uso (estructura por grados):
-  python3 setup_grado.py grados/GIDI                 → genera plantilla en esa carpeta
-  python3 setup_grado.py grados/GIDI asignaturas.csv → crea BD usando grados/GIDI/config.json
-  python3 setup_grado.py grados/GIDI asignaturas.csv --force
+Uso (estructura por horarios):
+  python3 setup_grado.py horarios/GIDI                 → genera plantilla en esa carpeta
+  python3 setup_grado.py horarios/GIDI asignaturas.csv → crea BD usando horarios/GIDI/config.json
+  python3 setup_grado.py horarios/GIDI asignaturas.csv --force
 """
 
 import csv

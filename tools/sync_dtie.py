@@ -5,9 +5,9 @@ sync_dtie.py — Sincroniza el horario y los exámenes finales de un grado DTIE
                tabla de distribución.
 
 Uso:
-    python3 tools/sync_dtie.py grados/<SIGLAS_DTIE>
-    python3 tools/sync_dtie.py grados/<SIGLAS_DTIE> --csv config/fichas_DTIE_GIDI_GIM.csv
-    python3 tools/sync_dtie.py grados/<SIGLAS_DTIE> --dry-run
+    python3 tools/sync_dtie.py horarios/<SIGLAS_DTIE>
+    python3 tools/sync_dtie.py horarios/<SIGLAS_DTIE> --csv config/fichas_DTIE_GIDI_GIM.csv
+    python3 tools/sync_dtie.py horarios/<SIGLAS_DTIE> --dry-run
 
 El script:
   - Lee fichas_DTIE_*.csv para saber qué asignaturas copiar y de qué grado origen.
@@ -526,7 +526,7 @@ def main():
     )
     parser.add_argument(
         'grado_dir',
-        help='Carpeta del grado DTIE (ej. grados/DTIE_GIDI_GIM)'
+        help='Carpeta del grado DTIE (ej. horarios/DTIE_GIDI_GIM)'
     )
     parser.add_argument(
         '--csv',

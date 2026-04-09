@@ -7,7 +7,7 @@ Uso:
     → Abre http://localhost:8091 con el asistente completo.
 
 El wizard recoge todos los datos necesarios (estructura, franjas, calendario,
-actividades, asignaturas) y genera la carpeta grados/<SIGLAS>/ con:
+actividades, asignaturas) y genera la carpeta horarios/<SIGLAS>/ con:
     config.json, asignaturas_<SIGLAS>.csv, horarios.db, launchers
 """
 
@@ -1114,7 +1114,7 @@ function renderSummary() {
     <b>Calendario 2C:</b> ${cal['2C'].inicio||'—'} → ${cal['2C'].fin||'—'} · ${f2.length} festivos · ${vac.length} periodos vacaciones<br>
     <b>Asignaturas:</b> ${asignaturas.length} filas<br>
     <b>Importar horario:</b> ${importMode === 'importar' ? `Sí — ${importedClases.length} clases desde Excel` : 'No (horario vacío)'}<br>
-    <b>Carpeta destino:</b> grados/${b.siglas}/
+    <b>Carpeta destino:</b> horarios/${b.siglas}/
   `;
 }
 
@@ -1206,7 +1206,7 @@ async function generarGrado() {
       consoleLog('\n✅ Proyecto creado correctamente.', 'ok');
       const sb = document.getElementById('success-box');
       sb.style.display = 'block';
-      document.getElementById('success-path').textContent = 'Carpeta: ' + (res.grado_dir || 'grados/' + getBasico().siglas);
+      document.getElementById('success-path').textContent = 'Carpeta: ' + (res.grado_dir || 'horarios/' + getBasico().siglas);
     } else {
       consoleLog('\n❌ Se produjeron errores. Revisa la salida.', 'err');
     }
@@ -1482,9 +1482,9 @@ def generar_launchers(grado_dir: Path, siglas: str, cfg: dict):
     curso_label = cfg['server']['curso_label']
     db_stem     = db_name.replace('.db', '')
 
-    # Los launchers viven DENTRO de grados/<SIGLAS>/
+    # Los launchers viven DENTRO de horarios/<SIGLAS>/
     # El servidor y la BD están dos niveles arriba: ../../
-    root_rel  = '../..'          # raíz del proyecto desde grados/SIGLAS/
+    root_rel  = '../..'          # raíz del proyecto desde horarios/SIGLAS/
     db_rel    = db_name          # la BD está en la misma carpeta que el launcher
 
     # ── macOS .command ──────────────────────────────────────────────────────
@@ -1513,7 +1513,7 @@ trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" \\
-  --grado "grados/{siglas}" &
+  --grado "horarios/{siglas}" &
 SERVER_PID=$!
 
 sleep 1.5 && open "http://localhost:{port}"
@@ -1571,7 +1571,7 @@ set DB_BACKUP_TARGET=%DB_SRC%
 set CURSO_LABEL={curso_label}
 set CONFIG_PATH_OVERRIDE=%DIR%
 start "" "http://localhost:{port}"
-%PYTHON_CMD% "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
+%PYTHON_CMD% "%ROOT%\\servidor_horarios.py" --grado "horarios/{siglas}"
 
 copy /Y "%DB_TMP%" "%DB_SRC%" >nul 2>&1
 if errorlevel 1 (
@@ -1607,7 +1607,7 @@ cleanup() {{
 trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
-  python3 "$ROOT/servidor_horarios.py" --grado "grados/{siglas}" &
+  python3 "$ROOT/servidor_horarios.py" --grado "horarios/{siglas}" &
 SERVER_PID=$!
 
 sleep 1.5 && (xdg-open "http://localhost:{port}" 2>/dev/null || true)
@@ -1661,7 +1661,7 @@ def api_crear(data):
         if not siglas:
             return {'ok': False, 'error': 'Las siglas no pueden estar vacías.'}
 
-        grado_dir = BASE_DIR / 'grados' / siglas
+        grado_dir = BASE_DIR / 'horarios' / siglas
         grado_dir.mkdir(parents=True, exist_ok=True)
 
         # config.json

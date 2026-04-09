@@ -23,7 +23,7 @@ APP_VERSION = "1.21.1"
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
 # CONFIG_PATH_OVERRIDE permite apuntar a la carpeta de un grado concreto:
-#   CONFIG_PATH_OVERRIDE="grados/GIDI" python3 servidor_horarios.py
+#   CONFIG_PATH_OVERRIDE="horarios/GIDI" python3 servidor_horarios.py
 _cfg_override = os.environ.get("CONFIG_PATH_OVERRIDE")
 if _cfg_override:
     _cfg_path = os.path.join(_cfg_override, "config.json") if not _cfg_override.endswith(".json") else _cfg_override

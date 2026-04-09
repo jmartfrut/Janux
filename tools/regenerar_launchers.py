@@ -93,7 +93,7 @@ GRADOS = [
 ]
 
 for siglas, titulo, filename, port in GRADOS:
-    dest = ROOT / "grados" / siglas / filename
+    dest = ROOT / "horarios" / siglas / filename
     content = bat(siglas, titulo, port)
     dest.write_bytes(content)
     # Verificar

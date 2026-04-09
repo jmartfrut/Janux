@@ -7,7 +7,7 @@ Uso:
     python3 nuevo_dtie.py
     → Abre http://localhost:8092 con el asistente completo.
 
-Genera grados/<SIGLAS>/ con config.json, horarios.db y launchers.
+Genera horarios/<SIGLAS>/ con config.json, horarios.db y launchers.
 Las clases se copian semana a semana de las BDs de origen.
 """
 
@@ -234,7 +234,7 @@ tr.conflict-row td{background:#fff3f5}
       </div>
       <div class="field">
         <label>Ruta a la base de datos</label>
-        <input type="text" id="db-a" placeholder="grados/GIM/horarios.db">
+        <input type="text" id="db-a" placeholder="horarios/GIM/horarios.db">
         <div class="hint">Relativa a la carpeta del proyecto</div>
       </div>
     </div>
@@ -254,7 +254,7 @@ tr.conflict-row td{background:#fff3f5}
       </div>
       <div class="field">
         <label>Ruta a la base de datos</label>
-        <input type="text" id="db-b" placeholder="grados/GIDI/horarios.db">
+        <input type="text" id="db-b" placeholder="horarios/GIDI/horarios.db">
         <div class="hint">Relativa a la carpeta del proyecto</div>
       </div>
     </div>
@@ -851,7 +851,7 @@ function buildSummary() {
     <b>Fuente B:</b> ${fuenteData.b?.grado_nombre||'—'} — ${nB} asignaturas<br>
     <b>Total asignaturas:</b> ${dist.length} · Cursos DTIE: ${cursos.join(', ')||'—'}<br>
     <b>Estructura:</b><br>  ${estResumen||'—'}<br>
-    <b>Carpeta destino:</b> grados/${b.siglas}/
+    <b>Carpeta destino:</b> horarios/${b.siglas}/
   `;
 }
 
@@ -917,7 +917,7 @@ async function generarDtie() {
       consoleLog('\n✅ DTIE creado correctamente.', 'ok');
       const sb = document.getElementById('success-box');
       sb.style.display = 'block';
-      document.getElementById('success-path').textContent = 'Carpeta: ' + (res.grado_dir || 'grados/' + getBasico().siglas);
+      document.getElementById('success-path').textContent = 'Carpeta: ' + (res.grado_dir || 'horarios/' + getBasico().siglas);
     } else {
       consoleLog('\n❌ Se produjeron errores. Revisa la salida.', 'err');
     }
@@ -1147,8 +1147,8 @@ def resolve_db_path(db_path_str):
 
 
 def api_grados(_=None):
-    """Lista los grados disponibles en grados/."""
-    grados_dir = BASE_DIR / 'grados'
+    """Lista los grados disponibles en horarios/."""
+    grados_dir = BASE_DIR / 'horarios'
     result = []
     if not grados_dir.exists():
         return {'grados': []}
@@ -1744,7 +1744,7 @@ def api_resolver_csv_dtie(data):
     Acepta:
       csv_rows: [{"codigo","nombre","grado_origen","curso_dtie","cuatrimestre","grupo_origen"}, ...]
       csv_path: ruta relativa a un CSV en el servidor (alternativa a csv_rows)
-      fuentes:  [{"db_path": "grados/GIM/horarios.db"}, {"db_path": "grados/GIDI/horarios.db"}]
+      fuentes:  [{"db_path": "horarios/GIM/horarios.db"}, {"db_path": "horarios/GIDI/horarios.db"}]
     """
     import csv as _csv
 
@@ -2091,7 +2091,7 @@ trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
   python3 "$ROOT/servidor_horarios.py" \\
-  --grado "grados/{siglas}" &
+  --grado "horarios/{siglas}" &
 SERVER_PID=$!
 
 sleep 1.5 && open "http://localhost:{port}"
@@ -2112,7 +2112,7 @@ set DB_PATH_OVERRIDE=%DB_TMP%
 set CURSO_LABEL={curso_label}
 set CONFIG_PATH_OVERRIDE=%DIR%
 start "" "http://localhost:{port}"
-python "%ROOT%\\servidor_horarios.py" --grado "grados/{siglas}"
+python "%ROOT%\\servidor_horarios.py" --grado "horarios/{siglas}"
 copy /Y "%DB_TMP%" "%DB_SRC%" >nul 2>&1
 echo Base de datos guardada.
 pause
@@ -2136,7 +2136,7 @@ cleanup() {{
 trap cleanup EXIT INT TERM HUP
 
 DB_PATH_OVERRIDE="$DB_TMP" CURSO_LABEL="{curso_label}" CONFIG_PATH_OVERRIDE="$DIR" \\
-  python3 "$ROOT/servidor_horarios.py" --grado "grados/{siglas}" &
+  python3 "$ROOT/servidor_horarios.py" --grado "horarios/{siglas}" &
 SERVER_PID=$!
 
 sleep 1.5 && (xdg-open "http://localhost:{port}" 2>/dev/null || true)
@@ -2188,7 +2188,7 @@ def api_crear_dtie(data):
                 src_configs.append(None)
 
         # Crear carpeta
-        grado_dir = BASE_DIR / 'grados' / siglas
+        grado_dir = BASE_DIR / 'horarios' / siglas
         grado_dir.mkdir(parents=True, exist_ok=True)
         log(f'Carpeta destino: {grado_dir}', 'info')
 

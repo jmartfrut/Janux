@@ -17,9 +17,9 @@ Casos soportados:
     Si una asignatura del CSV no existe en la BD, se avisa y se omite.
 
 Uso:
-    python3 tools/reload_fichas.py grados/GIM
-    python3 tools/reload_fichas.py grados/GIDI
-    python3 tools/reload_fichas.py grados/GIM --dry-run   # sin escribir
+    python3 tools/reload_fichas.py horarios/GIM
+    python3 tools/reload_fichas.py horarios/GIDI
+    python3 tools/reload_fichas.py horarios/GIM --dry-run   # sin escribir
 """
 
 import argparse
@@ -175,7 +175,7 @@ def main():
     )
     parser.add_argument(
         "grado_dir",
-        help="Ruta a la carpeta del grado (ej: grados/GIM)"
+        help="Ruta a la carpeta del grado (ej: horarios/GIM)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",

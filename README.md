@@ -43,7 +43,7 @@ Janux/
 │   ├── Janux.command           # macOS — asistente nuevo grado / DTIE
 │   ├── Janux.sh                # Linux
 │   └── Janux.bat               # Windows
-├── grados/
+├── horarios/
 │   ├── GIM/
 │   │   ├── config.json         # Configuración completa del grado
 │   │   ├── horarios_2627.db    # BD del curso 2026-2027
@@ -77,7 +77,7 @@ Janux/
 └── backups/                    # Copias de seguridad (.db con timestamp)
 ```
 
-> La carpeta `grados/` no está versionada — se genera localmente por cada instalación.
+> La carpeta `horarios/` no está versionada — se genera localmente por cada instalación.
 
 ---
 
@@ -88,8 +88,8 @@ Janux/
 Doble clic en el fichero `.command` del grado correspondiente:
 
 ```
-grados/GIM/Iniciar Horarios GIM 2627.command   → GIM 2026-2027
-grados/GIDI/Iniciar GIDI.command               → GIDI 2026-2027
+horarios/GIM/Iniciar Horarios GIM 2627.command   → GIM 2026-2027
+horarios/GIDI/Iniciar GIDI.command               → GIDI 2026-2027
 ```
 
 El launcher copia la BD a `/tmp/` (evita errores de I/O en Dropbox/OneDrive), arranca el servidor y abre el navegador. Al cerrar la ventana del terminal, los cambios se guardan automáticamente en el `.db` del grado.
@@ -97,7 +97,7 @@ El launcher copia la BD a `/tmp/` (evita errores de I/O en Dropbox/OneDrive), ar
 ### Linux (Ubuntu / Debian)
 
 ```bash
-bash "grados/GIM/Iniciar Horarios GIM 2627.sh"
+bash "horarios/GIM/Iniciar Horarios GIM 2627.sh"
 ```
 
 Requiere `lsof` y `curl` instalados (`sudo apt install lsof curl`). El navegador se abre automáticamente con `xdg-open`.
@@ -117,10 +117,10 @@ Doble clic en el fichero `.bat` del grado correspondiente.
 
 ```bash
 # Grado GIM (2026-2027)
-CONFIG_PATH_OVERRIDE="grados/GIM" python3 servidor_horarios.py
+CONFIG_PATH_OVERRIDE="horarios/GIM" python3 servidor_horarios.py
 
 # Grado GIDI
-CONFIG_PATH_OVERRIDE="grados/GIDI" python3 servidor_horarios.py
+CONFIG_PATH_OVERRIDE="horarios/GIDI" python3 servidor_horarios.py
 ```
 
 Abre el navegador en `http://localhost:<puerto>` (el puerto se define en `config.json` de cada grado).
@@ -131,17 +131,17 @@ Abre el navegador en `http://localhost:<puerto>` (el puerto se define en `config
 
 Doble clic en `launchers/Janux.command` (macOS) o equivalente para tu plataforma. Se abre el asistente Janux en `http://localhost:8092` con dos opciones:
 
-- **Grado nuevo**: wizard de varios pasos. Genera `grados/<SIGLAS>/config.json`, el CSV de asignaturas y la BD.
+- **Grado nuevo**: wizard de varios pasos. Genera `horarios/<SIGLAS>/config.json`, el CSV de asignaturas y la BD.
 - **Doble Grado (DTIE)**: combina asignaturas marcadas como destacadas (⭐) de dos grados origen. Lee las BDs de origen y genera la carpeta del DTIE.
 
 ### Herramientas de línea de comandos
 
 ```bash
 # Inicializar BD desde cero (config.json + CSV de asignaturas):
-python3 tools/setup_grado.py grados/GIDI asignaturas_GIDI.csv --force
+python3 tools/setup_grado.py horarios/GIDI asignaturas_GIDI.csv --force
 
 # Importar horarios desde Excel (formato semanal UPCT):
-python3 tools/importar_horarios.py <fichero.xlsx> grados/<SIGLAS>/
+python3 tools/importar_horarios.py <fichero.xlsx> horarios/<SIGLAS>/
 
 # Exportar horarios a Excel (plantilla UPCT):
 python3 tools/exportar_excel.py [ruta_salida.xlsx]
@@ -192,7 +192,7 @@ Los días con `es_no_lectivo=1` bloquean la columna entera en la vista de semana
 
 ## Configuración (`config.json`)
 
-Cada grado se define completamente en su `grados/<SIGLAS>/config.json`. Secciones principales:
+Cada grado se define completamente en su `horarios/<SIGLAS>/config.json`. Secciones principales:
 
 - **`institution`** / **`degree`** — nombre, siglas y logos
 - **`server`** — puerto, nombre del `.db` y etiqueta del curso (`curso_label`)

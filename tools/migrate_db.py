@@ -12,8 +12,8 @@ Uso programático (servidor y herramientas):
     stamp("/ruta/a/horarios.db")                               # solo en BDs nuevas
 
 Uso desde consola (diagnóstico o migración manual):
-    python3 tools/migrate_db.py grados/GIM/horarios_2627.db
-    python3 tools/migrate_db.py grados/GIM/horarios_2627.db --info
+    python3 tools/migrate_db.py horarios/GIM/horarios_2627.db
+    python3 tools/migrate_db.py horarios/GIM/horarios_2627.db --info
 
 Reglas para el futuro:
     - NUNCA modificar una migración ya publicada.

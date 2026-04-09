@@ -24,7 +24,7 @@ Tipos de actividad:
 
 Uso standalone:
   python3 tools/exportar_institucional.py \\
-      --grado grados/GIM \\
+      --grado horarios/GIM \\
       --weeks weeks.xls            # (o weeks.json)
       [--output exportacion_institucional.xlsx]
 
