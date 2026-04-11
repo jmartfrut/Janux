@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.22.13"
+APP_VERSION = "1.23.6"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -612,7 +612,14 @@ def _parse_semana_date_ranges(conn):
 
 
 def _set_no_lectivo_clases(conn, cuatrimestre, numero, dia, value, descripcion=''):
-    """Propaga es_no_lectivo a todas las clases del día indicado en todos los grupos."""
+    """Propaga es_no_lectivo a todas las clases del día indicado en todos los grupos.
+
+    Al marcar como no-lectivo (value=1): elimina TODAS las clases del día (reales y
+    placeholders) y las sustituye por un único placeholder es_no_lectivo=1. Así no
+    quedan clases ocultas con datos de asignatura que puedan causar inconsistencias.
+
+    Al desmarcar (value=0): elimina el placeholder, dejando el día vacío.
+    """
     semana_ids = conn.execute("""
         SELECT s.id FROM semanas s
         JOIN grupos g ON s.grupo_id = g.id
@@ -623,38 +630,22 @@ def _set_no_lectivo_clases(conn, cuatrimestre, numero, dia, value, descripcion='
 
     for s in semana_ids:
         sid = s['id']
-        existing = conn.execute(
-            "SELECT id, asignatura_id FROM clases WHERE semana_id=? AND dia=?",
-            (sid, dia)
-        ).fetchall()
 
         if value == 1:
-            if existing:
-                conn.execute(
-                    "UPDATE clases SET es_no_lectivo=1 WHERE semana_id=? AND dia=?",
-                    (sid, dia)
-                )
-            else:
-                franja_id = franjas[0]['id'] if franjas else 1
-                conn.execute("""
-                    INSERT INTO clases
-                        (semana_id, dia, franja_id, asignatura_id, aula, subgrupo,
-                         observacion, es_no_lectivo, contenido)
-                    VALUES (?, ?, ?, NULL, '', '', NULL, 1, ?)
-                """, (sid, dia, franja_id, descripcion or 'NO LECTIVO'))
+            # Eliminar TODAS las clases del día (reales y placeholders)
+            # para sustituirlas por un único placeholder no-lectivo limpio.
+            conn.execute("DELETE FROM clases WHERE semana_id=? AND dia=?", (sid, dia))
+            franja_id = franjas[0]['id'] if franjas else 1
+            conn.execute("""
+                INSERT INTO clases
+                    (semana_id, dia, franja_id, asignatura_id, aula, subgrupo,
+                     observacion, es_no_lectivo, contenido)
+                VALUES (?, ?, ?, NULL, '', '', NULL, 1, ?)
+            """, (sid, dia, franja_id, descripcion or 'NO LECTIVO'))
         else:
-            if existing:
-                has_real = any(r['asignatura_id'] is not None for r in existing)
-                if has_real:
-                    conn.execute(
-                        "UPDATE clases SET es_no_lectivo=0 WHERE semana_id=? AND dia=?",
-                        (sid, dia)
-                    )
-                else:
-                    conn.execute(
-                        "DELETE FROM clases WHERE semana_id=? AND dia=? AND es_no_lectivo=1",
-                        (sid, dia)
-                    )
+            # Al desmarcar: eliminar el placeholder (y cualquier residuo).
+            # El día queda vacío; el usuario reintroduce las clases si lo necesita.
+            conn.execute("DELETE FROM clases WHERE semana_id=? AND dia=?", (sid, dia))
 
 
 def api_get_festivos(params):
@@ -1486,6 +1477,75 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
             try:
                 result = api_db_import(raw_bytes)
                 self.send_json(result)
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+
+        elif parsed.path == "/api/verificar":
+            # Recibe el PDF como bytes crudos; grupo_id en query string
+            params = parse_qs(parsed.query)
+            grupo_id_str = (params.get("grupo_id") or [""])[0]
+            if not grupo_id_str.isdigit():
+                self.send_json({"error": "grupo_id inválido o ausente"}, 400)
+                return
+            grupo_id = int(grupo_id_str)
+            length = _read_length()
+            if length is None:
+                self.send_json({"error": "Content-Length inválido o ausente"}, 400)
+                return
+            raw_bytes = self.rfile.read(length)
+            try:
+                import tempfile, importlib.util
+                verif_path = os.path.join(SCRIPT_DIR, "tools", "verificar_pdf.py")
+                if not os.path.exists(verif_path):
+                    self.send_json({"error": "verificar_pdf.py no encontrado en tools/"}, 500)
+                    return
+                spec = importlib.util.spec_from_file_location("verificar_pdf", verif_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                # Escribir PDF en fichero temporal
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(raw_bytes)
+                    tmp_path = tmp.name
+                try:
+                    conn = get_db()
+                    resultado = mod.verificar_pdf(tmp_path, grupo_id, conn)
+                    conn.close()
+                finally:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                self.send_json(resultado)
+            except Exception as e:
+                import traceback
+                self.send_json({"error": str(e), "trace": traceback.format_exc()}, 500)
+
+        elif parsed.path == "/api/verificar/marcar_nolectivo":
+            # Recibe JSON {grupo_id, sem_num, dia}
+            # Marca es_no_lectivo=1 en todas las clases de ese día/semana/grupo
+            length = _read_length()
+            if length is None:
+                self.send_json({"error": "Content-Length inválido o ausente"}, 400)
+                return
+            body = self.rfile.read(length).decode("utf-8", errors="replace")
+            try:
+                data = json.loads(body) if body else {}
+                grupo_id = int(data.get("grupo_id", 0))
+                sem_num  = int(data.get("sem_num",  0))
+                dia      = str(data.get("dia",      ""))
+                if not grupo_id or not sem_num or not dia:
+                    self.send_json({"error": "Faltan parámetros: grupo_id, sem_num, dia"}, 400)
+                    return
+                conn = get_db()
+                cur  = conn.execute(
+                    """UPDATE clases SET es_no_lectivo = 1
+                       WHERE grupo_id = ? AND sem_num = ? AND dia = ?""",
+                    (grupo_id, sem_num, dia)
+                )
+                conn.commit()
+                actualizadas = cur.rowcount
+                conn.close()
+                self.send_json({"ok": True, "actualizadas": actualizadas})
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
 

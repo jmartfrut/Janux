@@ -2499,13 +2499,15 @@ function setView(v, btn) {
   currentView = v;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  document.getElementById('view-semana').style.display = v==='semana'?'':'none';
-  document.getElementById('view-stats').style.display = v==='stats'?'':'none';
+  document.getElementById('view-semana').style.display    = v==='semana'   ?'':'none';
+  document.getElementById('view-stats').style.display     = v==='stats'    ?'':'none';
   document.getElementById('view-parciales').style.display = v==='parciales'?'':'none';
-  document.getElementById('view-finales').style.display = v==='finales'?'':'none';
-  document.getElementById('view-festivos').style.display = v==='festivos'?'':'none';
-  if (v==='festivos') { loadFestivos(); return; }
-  if (v==='finales')  { loadFinales();  return; }
+  document.getElementById('view-finales').style.display   = v==='finales'  ?'':'none';
+  document.getElementById('view-festivos').style.display  = v==='festivos' ?'':'none';
+  document.getElementById('view-verificar').style.display = v==='verificar'?'':'none';
+  if (v==='festivos')  { loadFestivos(); return; }
+  if (v==='finales')   { loadFinales();  return; }
+  if (v==='verificar') { return; }
   render();
 }
 function showStats() { setView('stats', null); }
@@ -3593,4 +3595,267 @@ async function saveFestivo(fecha, action) {
   FESTIVOS_MAP = {};
   for (const r of rows) FESTIVOS_MAP[r.fecha] = { tipo: r.tipo, descripcion: r.descripcion };
   buildSemanaDateMap();
+  verifInit();
 })();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFICACIÓN INSTITUCIONAL — Vista "Verificar"
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _verifFile = null;
+
+function verifInit() {
+  // Nada que inicializar; la vista es estática hasta que el usuario sube un PDF
+}
+
+function verifDragOver(e) {
+  e.preventDefault();
+  document.getElementById('verifDropzone').classList.add('drag-over');
+}
+function verifDragLeave(e) {
+  document.getElementById('verifDropzone').classList.remove('drag-over');
+}
+function verifDrop(e) {
+  e.preventDefault();
+  document.getElementById('verifDropzone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.toLowerCase().endsWith('.pdf')) {
+    _verifSetFile(file);
+  } else {
+    showToast('Por favor, selecciona un fichero PDF.', 'error');
+  }
+}
+function verifFileSelected(input) {
+  if (input.files[0]) _verifSetFile(input.files[0]);
+}
+function _verifSetFile(file) {
+  _verifFile = file;
+  document.getElementById('verifDropText').textContent = '✔ ' + file.name;
+  document.getElementById('verifFileName').textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+  const actDiv = document.getElementById('verifActions');
+  actDiv.style.display = 'flex';
+  document.getElementById('verifResult').style.display = 'none';
+}
+function verifReset() {
+  _verifFile = null;
+  document.getElementById('verifDropText').textContent = 'Arrastra aquí el PDF o haz clic para seleccionarlo';
+  document.getElementById('verifActions').style.display = 'none';
+  document.getElementById('verifResult').style.display  = 'none';
+  document.getElementById('verifFileInput').value = '';
+}
+
+async function verifRun() {
+  if (!_verifFile) return;
+
+  // Obtener grupo_id del grupo activo (desde DB.grupos)
+  const key  = getKey();
+  const grp  = DB && DB.grupos && DB.grupos[key];
+  const gid  = grp ? grp.id : null;
+  if (!gid) {
+    showToast('No se pudo determinar el grupo activo. Selecciona curso/cuatrimestre/grupo.', 'error');
+    return;
+  }
+
+  const resultDiv = document.getElementById('verifResult');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="verif-loading">Analizando PDF&hellip;</div>';
+
+  const btn = document.getElementById('verifRunBtn');
+  btn.disabled = true;
+
+  try {
+    const bytes = await _verifFile.arrayBuffer();
+    const resp  = await fetch('/api/verificar?grupo_id=' + gid, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': bytes.byteLength },
+      body: bytes,
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    _verifRenderResult(data);
+  } catch (err) {
+    resultDiv.innerHTML = '<div style="color:#c0392b;padding:18px">Error: ' + _escHtml(String(err)) + '</div>';
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function _verifRenderResult(data) {
+  const s = data.stats;
+  const g = data.grupo || {};
+  const resultDiv = document.getElementById('verifResult');
+
+  const tasaClass = s.tasa_db >= 95 ? 'vsc-ok' : s.tasa_db >= 80 ? 'vsc-warn' : 'vsc-warn';
+
+  let html = `
+    <div style="margin-top:20px">
+      <div style="font-size:.85rem;color:var(--text-light);margin-bottom:10px">
+        Grupo analizado: <strong>Curso ${_escHtml(String(g.curso||'?'))} · ${_escHtml(g.cuatrimestre||'?')} · Grupo ${_escHtml(String(g.grupo||'?'))}</strong>
+      </div>
+      <div class="verif-stats-row">
+        <div class="verif-stat-card vsc-info">
+          <div class="vsc-num">${s.total_db}</div>
+          <div class="vsc-lbl">Clases en BD</div>
+        </div>
+        <div class="verif-stat-card vsc-info">
+          <div class="vsc-num">${s.total_pdf}</div>
+          <div class="vsc-lbl">Detectadas en PDF</div>
+        </div>
+        <div class="verif-stat-card vsc-ok">
+          <div class="vsc-num">${s.coincidencias}</div>
+          <div class="vsc-lbl">Coincidencias</div>
+        </div>
+        <div class="verif-stat-card ${s.solo_pdf > 0 ? 'vsc-warn' : 'vsc-ok'}">
+          <div class="vsc-num">${s.solo_pdf}</div>
+          <div class="vsc-lbl">Solo en PDF</div>
+        </div>
+        <div class="verif-stat-card ${s.solo_db > 0 ? 'vsc-warn' : 'vsc-ok'}">
+          <div class="vsc-num">${s.solo_db}</div>
+          <div class="vsc-lbl">Solo en BD</div>
+        </div>
+        <div class="verif-stat-card ${tasaClass}">
+          <div class="vsc-num">${s.tasa_db}%</div>
+          <div class="vsc-lbl">Cobertura BD→PDF</div>
+        </div>
+      </div>
+  `;
+
+  // Lista de semanas
+  html += '<div class="verif-semana-list">';
+  for (const sem of data.semanas) {
+    const nDisc = sem.solo_pdf.length + sem.solo_db.length;
+    const isOk  = nDisc === 0;
+    const rowCls = isOk ? 'sem-ok' : 'sem-warn';
+    const badgeCls = isOk ? 'badge-ok' : 'badge-warn';
+    const badgeTxt = isOk ? '✓ OK' : `⚠ ${nDisc} discrepancia${nDisc>1?'s':''}`;
+    const semId    = 'verif-sem-' + sem.numero;
+
+    html += `
+      <div class="verif-sem-row ${rowCls}" onclick="verifToggleSem('${semId}')">
+        <span class="verif-sem-badge ${badgeCls}">${badgeTxt}</span>
+        <span class="verif-sem-desc">${_escHtml(sem.descripcion)}</span>
+        ${sem.fecha_inicio_pdf ? `<span class="verif-sem-fecha">${_escHtml(sem.fecha_inicio_pdf)}</span>` : ''}
+        <span style="font-size:.8rem;color:var(--text-light)">${sem.coincidencias.length}/${sem.total_db} ✓</span>
+        <span style="font-size:.9rem;color:var(--text-light)">&#9660;</span>
+      </div>
+      <div class="verif-sem-detail" id="${semId}">
+    `;
+
+    if (nDisc === 0) {
+      html += `<div style="font-size:.84rem;color:#2d8a4e;padding:6px 4px">✅ Todas las clases coinciden en esta semana.</div>`;
+    } else {
+      html += `<table class="verif-disc-table">
+        <thead><tr>
+          <th>Día</th><th>Franja</th><th>Asignatura</th>
+          <th>Tipo</th><th>Subg.</th><th>Estado</th>
+        </tr></thead><tbody>`;
+      const allDisc = [
+        ...sem.solo_pdf.map(d => ({...d, origen:'solo_pdf'})),
+        ...sem.solo_db.map(d  => ({...d, origen:'solo_db'})),
+      ].sort((a,b) => (a.franja_id - b.franja_id) || a.dia.localeCompare(b.dia));
+
+      for (const d of allDisc) {
+        const origenTxt = d.origen === 'solo_pdf'
+          ? '<span style="color:#92400e;font-weight:600">⚠ Solo en PDF</span>'
+          : '<span style="color:#166534;font-weight:600">⚠ Solo en BD</span>';
+        html += `<tr class="tag-${d.origen}">
+          <td>${_escHtml(d.dia_abrev||d.dia)}</td>
+          <td>${_escHtml(d.franja)}</td>
+          <td>${_escHtml(d.asignatura)}</td>
+          <td>${_escHtml(d.tipo)}</td>
+          <td>${_escHtml(d.subgrupo)}</td>
+          <td>${origenTxt}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    html += '</div>'; // verif-sem-detail
+  }
+  html += '</div>'; // verif-semana-list
+
+  // Días posiblemente no-lectivos
+  const pnl = data.posibles_no_lectivos || [];
+  if (pnl.length > 0) {
+    const grupoId = (data.grupo || {}).id || 0;
+    html += `<div class="verif-nolectivo-block">
+      <div class="verif-nolectivo-title">
+        📅 Días sin clases en el PDF (posible día no-lectivo)
+      </div>
+      <p class="verif-nolectivo-desc">
+        Los siguientes días aparecen en la cabecera del PDF pero sin ninguna clase registrada.
+        Si son días no-lectivos, puedes eliminar automáticamente las clases de la base de datos.
+      </p>`;
+    for (const entry of pnl) {
+      const entryId = `nolectivo-${entry.sem_num}-${entry.dia.replace(/\s/g,'')}`;
+      html += `
+      <div class="verif-nolectivo-row" id="${entryId}">
+        <div class="verif-nolectivo-info">
+          <strong>${_escHtml(entry.dia_abrev || entry.dia)}</strong>
+          <span class="verif-nolectivo-sem">${_escHtml(entry.descripcion)}</span>
+          <span class="verif-nolectivo-count">${entry.clases.length} clase${entry.clases.length > 1 ? 's' : ''} en BD</span>
+        </div>
+        <button class="verif-btn-nolectivo"
+          onclick="verifMarcarNolectivo(${grupoId}, ${entry.sem_num}, '${_escHtml(entry.dia)}', '${entryId}')">
+          🗑 Marcar como no-lectivo
+        </button>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Nota metodológica
+  html += `<div class="verif-note">
+    <strong>Nota:</strong> El PDF institucional no codifica el tipo de actividad en texto (los colores de celda
+    no son extraíbles), por lo que la comparación de tipo (LAB/INF) es aproximada.
+    Celdas con varios subgrupos simultáneos pueden capturarse parcialmente.
+    Se excluyen exámenes parciales (EXP) y finales (EXF) de la comparación.
+  </div>`;
+
+  html += '</div>'; // wrapper
+  resultDiv.innerHTML = html;
+}
+
+async function verifMarcarNolectivo(grupoId, semNum, dia, entryId) {
+  const row = document.getElementById(entryId);
+  const btn = row ? row.querySelector('.verif-btn-nolectivo') : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Procesando…'; }
+
+  try {
+    const resp = await fetch('/api/verificar/marcar_nolectivo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({grupo_id: grupoId, sem_num: semNum, dia: dia}),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) throw new Error(data.error || 'Error desconocido');
+    if (row) {
+      row.innerHTML = `<div class="verif-nolectivo-done">
+        ✅ <strong>${_escHtml(dia)}</strong> — ${data.actualizadas} clase${data.actualizadas !== 1 ? 's' : ''} marcada${data.actualizadas !== 1 ? 's' : ''} como no-lectivo
+      </div>`;
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '🗑 Marcar como no-lectivo'; }
+    alert('Error: ' + err.message);
+  }
+}
+
+function verifToggleSem(semId) {
+  const el = document.getElementById(semId);
+  if (!el) return;
+  el.classList.toggle('open');
+  // Rotar flecha del row padre
+  const row = el.previousElementSibling;
+  if (row) {
+    const arrow = row.querySelector('span:last-child');
+    if (arrow) arrow.innerHTML = el.classList.contains('open') ? '&#9650;' : '&#9660;';
+  }
+}
+
+function _escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Fin Verificación ─────────────────────────────────────────────────────────

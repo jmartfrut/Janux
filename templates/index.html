@@ -46,6 +46,115 @@
 }
 .comentario-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(26,58,107,.12); }
 /* ── Fin Comentarios ── */
+/* ── Vista Verificación ── */
+.verif-wrap { max-width: 900px; margin: 0 auto; padding: 8px 0 30px; }
+.verif-header h3 { font-size: 1.1rem; color: var(--primary); margin: 0 0 4px; }
+.verif-header p  { font-size: .88rem; color: var(--text-light, #666); margin: 0 0 18px; }
+.verif-dropzone {
+  border: 2px dashed var(--primary); border-radius: 12px;
+  padding: 36px 24px; text-align: center; cursor: pointer;
+  background: #f7faff; transition: background .15s, border-color .15s;
+}
+.verif-dropzone.drag-over { background: #e8f0ff; border-color: var(--accent); }
+.verif-drop-icon { font-size: 2.2rem; margin-bottom: 8px; }
+.verif-drop-text { font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 4px; }
+.verif-drop-hint { font-size: .8rem; color: var(--text-light, #888); }
+.verif-stats-row {
+  display: flex; gap: 14px; flex-wrap: wrap; margin: 20px 0 8px;
+}
+.verif-stat-card {
+  flex: 1; min-width: 120px; padding: 12px 16px; border-radius: 10px;
+  text-align: center; background: var(--card, #fff);
+  border: 1px solid var(--border, #dce3ef);
+}
+.verif-stat-card .vsc-num { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+.verif-stat-card .vsc-lbl { font-size: .75rem; color: var(--text-light, #888); margin-top: 2px; }
+.vsc-ok   .vsc-num { color: #2d8a4e; }
+.vsc-warn .vsc-num { color: #b45309; }
+.vsc-info .vsc-num { color: var(--primary); }
+.verif-semana-list { margin-top: 18px; }
+.verif-sem-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px; border-radius: 7px; margin-bottom: 4px;
+  background: var(--card, #fff); border: 1px solid var(--border, #dce3ef);
+  cursor: pointer; transition: background .12s;
+}
+.verif-sem-row:hover { background: #f0f5ff; }
+.verif-sem-row.sem-ok   { border-left: 4px solid #2d8a4e; }
+.verif-sem-row.sem-warn { border-left: 4px solid #d97706; }
+.verif-sem-badge {
+  font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-ok   { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.verif-sem-desc { flex: 1; font-size: .88rem; font-weight: 600; color: var(--primary); }
+.verif-sem-fecha { font-size: .78rem; color: var(--text-light, #888); }
+.verif-sem-detail { display: none; padding: 10px 14px 14px; }
+.verif-sem-detail.open { display: block; }
+.verif-disc-table {
+  width: 100%; border-collapse: collapse; font-size: .84rem; margin-top: 8px;
+}
+.verif-disc-table th {
+  background: #f0f5ff; color: var(--primary); font-weight: 600;
+  padding: 6px 10px; text-align: left; border-bottom: 2px solid var(--border, #dce3ef);
+}
+.verif-disc-table td { padding: 5px 10px; border-bottom: 1px solid #eef0f5; }
+.verif-disc-table tr:last-child td { border-bottom: none; }
+.tag-solo-pdf { background: #fffbeb; color: #92400e; }
+.tag-solo-db  { background: #f0fdf4; color: #166534; }
+.verif-loading {
+  text-align: center; padding: 40px 0; font-size: 1rem;
+  color: var(--primary); font-weight: 600;
+}
+.verif-loading::after {
+  content: ''; display: inline-block; width: 18px; height: 18px;
+  border: 3px solid var(--primary); border-top-color: transparent;
+  border-radius: 50%; animation: spin .7s linear infinite;
+  vertical-align: middle; margin-left: 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.verif-note {
+  font-size: .78rem; color: var(--text-light, #888); margin-top: 16px;
+  padding: 10px 14px; background: #f8f9fb; border-radius: 8px;
+  border-left: 3px solid var(--border, #dce3ef);
+}
+.verif-nolectivo-block {
+  margin-top: 20px; border: 1px solid #fbbf24; border-radius: 10px;
+  background: #fffbeb; padding: 14px 16px;
+}
+.verif-nolectivo-title {
+  font-size: .95rem; font-weight: 700; color: #92400e; margin-bottom: 6px;
+}
+.verif-nolectivo-desc {
+  font-size: .82rem; color: #78350f; margin: 0 0 12px;
+}
+.verif-nolectivo-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #fff; border: 1px solid #fde68a; border-radius: 7px;
+  padding: 9px 12px; margin-bottom: 8px;
+}
+.verif-nolectivo-info {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.verif-nolectivo-sem {
+  font-size: .8rem; color: var(--text-light, #888);
+}
+.verif-nolectivo-count {
+  font-size: .78rem; background: #fef9c3; color: #92400e;
+  border-radius: 10px; padding: 2px 8px;
+}
+.verif-btn-nolectivo {
+  font-size: .82rem; background: #dc2626; color: #fff; border: none;
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; white-space: nowrap;
+  transition: background .15s;
+}
+.verif-btn-nolectivo:hover:not(:disabled) { background: #b91c1c; }
+.verif-btn-nolectivo:disabled { background: #ccc; cursor: default; }
+.verif-nolectivo-done {
+  font-size: .85rem; color: #166534; padding: 4px 0;
+}
+/* ── Fin Verificación ── */
 .export-dropdown { position: relative; display: inline-block; }
 .export-menu {
   display: none; position: absolute; right: 0; top: calc(100% + 4px);
@@ -112,6 +221,7 @@
       <button class="tab-btn" onclick="setView('parciales',this)">&#128221; Parciales</button>
       <button class="tab-btn" onclick="setView('finales',this)">&#127891; Finales</button>
       <button class="tab-btn" onclick="setView('festivos',this)">&#128197; Calendario</button>
+      <button class="tab-btn" onclick="setView('verificar',this)" disabled title="Vista temporalmente desactivada">&#128270; Verificar</button>
     </div>
   </div>
   <div class="toolbar-group" style="margin-left:auto">
@@ -148,6 +258,28 @@
   <div id="view-stats" style="display:none"><div class="stats-grid" id="statsGrid"></div><div class="subjects-table" id="subjectsTable"></div><div id="evolucionSection"></div></div>
   <div id="view-parciales" style="display:none"><div class="parc-calendar" id="parcGrid"></div></div>
   <div id="view-finales" style="display:none"><div class="parc-calendar" id="finalesContainer"></div></div>
+  <div id="view-verificar" style="display:none">
+    <div class="verif-wrap" id="verifWrap">
+      <div class="verif-header">
+        <h3>&#128270; Verificaci&oacute;n Institucional</h3>
+        <p>Sube el PDF descargado de <strong>horarios.upct.es</strong> para el grupo activo. El sistema comparar&aacute; cada clase contra la base de datos y marcar&aacute; las discrepancias.</p>
+      </div>
+      <div class="verif-dropzone" id="verifDropzone"
+           ondragover="verifDragOver(event)" ondragleave="verifDragLeave(event)" ondrop="verifDrop(event)"
+           onclick="document.getElementById('verifFileInput').click()">
+        <div class="verif-drop-icon">&#128228;</div>
+        <div class="verif-drop-text" id="verifDropText">Arrastra aqu&iacute; el PDF o haz clic para seleccionarlo</div>
+        <div class="verif-drop-hint">PDF de horarios.upct.es &mdash; grupo activo en la barra superior</div>
+        <input type="file" id="verifFileInput" accept=".pdf" style="display:none" onchange="verifFileSelected(this)">
+      </div>
+      <div id="verifActions" style="display:none;margin-top:14px;display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="verifRunBtn" onclick="verifRun()">&#128270; Verificar</button>
+        <button class="btn btn-outline btn-sm" onclick="verifReset()">&#10006; Cancelar</button>
+        <span id="verifFileName" style="font-size:.85rem;color:var(--text-light)"></span>
+      </div>
+      <div id="verifResult" style="display:none"></div>
+    </div>
+  </div>
   <div id="view-festivos" style="display:none">
     <div class="cal-wrap">
       <div class="cal-top">
