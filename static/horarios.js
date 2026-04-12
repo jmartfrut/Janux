@@ -823,14 +823,15 @@ function expandSubgrupos(sg) {
 
 /**
  * Pre-pasada: recorre todas las clases del grupo y recoge, POR TIPO ('lab' / 'info'),
- * el conjunto global de subgrupos numéricos explícitos (excluyendo "", "todos", "Todos").
- * Se recopila a nivel de grupo (no por asignatura) para que asignaturas donde TODAS
- * las sesiones son "todos" puedan expandirse usando los subgrupos de otras asignaturas
- * del mismo tipo en el mismo grupo.
- * Devuelve: { lab: Set<string>, info: Set<string> }
+ * subgrupos numéricos explícitos (excluyendo "", "todos", "Todos") en dos niveles:
+ *  - groupWide: conjunto global del grupo (fallback para asignaturas que SÓLO tienen "todos")
+ *  - byAsig:    conjunto propio de cada asignatura (usado preferentemente al expandir "todos")
+ * Devuelve: { groupWide: { lab: Set<string>, info: Set<string> },
+ *             byAsig:    { [asigCod]: { lab: Set<string>, info: Set<string> } } }
  */
 function collectKnownSubgrupos(weeks) {
-  const known = { lab: new Set(), info: new Set() };
+  const groupWide = { lab: new Set(), info: new Set() };
+  const byAsig = {};
   weeks.forEach(w => {
     w.clases.forEach(c => {
       if (!c.asig_codigo || c.es_no_lectivo) return;
@@ -838,17 +839,22 @@ function collectKnownSubgrupos(weeks) {
       if (tipo !== 'info' && tipo !== 'lab') return;
       const rawSg = (c.subgrupo || '').trim();
       if (!rawSg || rawSg.toLowerCase() === 'todos') return; // no cuenta como explícito
-      expandSubgrupos(rawSg).forEach(sg => known[tipo].add(sg));
+      expandSubgrupos(rawSg).forEach(sg => {
+        groupWide[tipo].add(sg);
+        if (!byAsig[c.asig_codigo]) byAsig[c.asig_codigo] = { lab: new Set(), info: new Set() };
+        byAsig[c.asig_codigo][tipo].add(sg);
+      });
     });
   });
-  return known;
+  return { groupWide, byAsig };
 }
 
 /**
  * Resuelve el campo subgrupo de una clase en la lista de subgrupos a los que
  * se debe acumular esa sesión.
- *   "todos" / "Todos"  →  todos los subgrupos numéricos conocidos para ese tipo en el grupo;
- *                          si no hay ninguno conocido, devuelve [''] (sesión compartida sin desglose).
+ *   "todos" / "Todos"  →  subgrupos propios de la asignatura para ese tipo (si los tiene);
+ *                          si no tiene ninguno explícito, usa el conjunto global del grupo;
+ *                          si tampoco hay ninguno, devuelve [''] (sesión compartida sin desglose).
  *   ""       →  ['']  (sesión compartida — se contabiliza una vez, sin desglose)
  *   "1,2,3"  →  ["1","2","3"]  (expandSubgrupos)
  *   "1-4"    →  ["1","2","3","4"]  (expandSubgrupos)
@@ -857,12 +863,15 @@ function collectKnownSubgrupos(weeks) {
 function resolveSubgrupos(rawSg, asigCod, tipo, knownSubgrupos) {
   const sg = (rawSg || '').trim();
   if (sg.toLowerCase() === 'todos') {
-    // Expandir al conjunto global de subgrupos numéricos para este tipo en el grupo
-    const known = knownSubgrupos[tipo]; // tipo es 'lab' o 'info'
+    // Usar primero los subgrupos propios de la asignatura; si no tiene, caer al global del grupo.
+    // Esto evita que una asignatura herede subgrupos de otras del mismo grupo con distinto nº de subgrupos.
+    const asigOwn = knownSubgrupos.byAsig[asigCod];
+    const own = asigOwn && asigOwn[tipo];
+    const known = (own && own.size > 0) ? own : knownSubgrupos.groupWide[tipo];
     if (known && known.size > 0) {
       return [...known].sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
     }
-    // Sin subgrupos conocidos en el grupo: sesión sin desglose
+    // Sin subgrupos conocidos: sesión sin desglose
     return [''];
   }
   // "" → [''], "2" → ["2"], "1,2,3" → ["1","2","3"], "1-4" → ["1","2","3","4"]
