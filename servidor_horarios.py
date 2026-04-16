@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.28.3"
+APP_VERSION = "1.30.0"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -488,6 +488,30 @@ def api_delete_clase(data):
     conn.commit()
     conn.close()
     return {"ok": True, "deleted": deleted}
+
+
+def api_clear_group_clases(data):
+    """Elimina todas las clases reales (es_no_lectivo=0) de un grupo/cuatrimestre/curso.
+    Recibe {grupo_key} — ej. '2_1C_grupo_1'.
+    Los días marcados como no-lectivos y los exámenes finales NO se modifican.
+    """
+    grupo_key = data.get("grupo_key")
+    if not grupo_key:
+        return {"error": "grupo_key requerido"}
+    conn = get_db()
+    res = conn.execute("""
+        DELETE FROM clases
+        WHERE es_no_lectivo = 0
+          AND semana_id IN (
+              SELECT s.id FROM semanas s
+              JOIN grupos g ON s.grupo_id = g.id
+              WHERE g.clave = ?
+          )
+    """, (grupo_key,))
+    deleted = res.rowcount
+    conn.commit()
+    conn.close()
+    return {"ok": True, "deleted": deleted, "grupo_key": grupo_key}
 
 
 def api_unlink_conjunto(data):
@@ -1264,6 +1288,99 @@ def api_move_clase(data):
     return {"ok": True, "swap": len(destinos) == 1}
 
 
+# ─── MODO ESPEJO — sincronización entre grupos ────────────────────────────────
+
+def ensure_grupos_sinc_table():
+    """Crea la tabla grupos_sinc_exclusiones si no existe."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS grupos_sinc_exclusiones (
+            grupo_key_origen  TEXT NOT NULL,
+            grupo_key_destino TEXT NOT NULL,
+            asignatura_codigo TEXT NOT NULL,
+            PRIMARY KEY (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def api_get_sinc_config(params):
+    """GET /api/sinc/config?origen=...&destino=...
+    Devuelve la lista de códigos de asignatura excluidos de la sincronización
+    para el par de grupos indicado. Las exclusiones son simétricas: se consultan
+    en ambas direcciones y se devuelve la unión."""
+    origen  = params.get('origen',  [''])[0]
+    destino = params.get('destino', [''])[0]
+    if not origen or not destino:
+        return {"ok": False, "error": "Parámetros 'origen' y 'destino' requeridos"}
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT asignatura_codigo FROM grupos_sinc_exclusiones
+               WHERE (grupo_key_origen=? AND grupo_key_destino=?)
+                  OR (grupo_key_origen=? AND grupo_key_destino=?)""",
+            (origen, destino, destino, origen)
+        ).fetchall()
+        # Devolver códigos únicos (la unión de ambas direcciones)
+        codigos = list({r["asignatura_codigo"] for r in rows})
+        return {"ok": True, "exclusiones": codigos}
+    finally:
+        conn.close()
+
+
+def api_sinc_exclusion_toggle(data):
+    """POST /api/sinc/exclusion/toggle
+    Añade o elimina una asignatura de la lista de exclusiones del modo espejo.
+    Las exclusiones se guardan en AMBAS direcciones para garantizar simetría.
+    Parámetros: { origen, destino, codigo }
+    Devuelve { ok, action: 'added'|'removed' }"""
+    origen  = data.get("origen",  "")
+    destino = data.get("destino", "")
+    codigo  = data.get("codigo",  "")
+    if not (origen and destino and codigo):
+        return {"ok": False, "error": "Faltan parámetros: origen, destino, codigo"}
+    conn = get_db()
+    try:
+        # Comprobar si ya existe en cualquiera de las dos direcciones
+        existing = conn.execute(
+            """SELECT 1 FROM grupos_sinc_exclusiones
+               WHERE asignatura_codigo=?
+                 AND ((grupo_key_origen=? AND grupo_key_destino=?)
+                   OR (grupo_key_origen=? AND grupo_key_destino=?))""",
+            (codigo, origen, destino, destino, origen)
+        ).fetchone()
+        if existing:
+            # Eliminar en ambas direcciones
+            conn.execute(
+                """DELETE FROM grupos_sinc_exclusiones
+                   WHERE asignatura_codigo=?
+                     AND ((grupo_key_origen=? AND grupo_key_destino=?)
+                       OR (grupo_key_origen=? AND grupo_key_destino=?))""",
+                (codigo, origen, destino, destino, origen)
+            )
+            conn.commit()
+            return {"ok": True, "action": "removed"}
+        else:
+            # Insertar en ambas direcciones (INSERT OR IGNORE por idempotencia)
+            conn.execute(
+                """INSERT OR IGNORE INTO grupos_sinc_exclusiones
+                   (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+                   VALUES (?,?,?)""",
+                (origen, destino, codigo)
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO grupos_sinc_exclusiones
+                   (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+                   VALUES (?,?,?)""",
+                (destino, origen, codigo)
+            )
+            conn.commit()
+            return {"ok": True, "action": "added"}
+    finally:
+        conn.close()
+
+
 # ─── ROUTE MAP ───
 
 API_ROUTES = {
@@ -1271,6 +1388,7 @@ API_ROUTES = {
     "/api/clase/update":          ("POST", api_update_clase),
     "/api/clase/create":          ("POST", api_create_clase),
     "/api/clase/delete":          ("POST", api_delete_clase),
+    "/api/clases/clear-group":    ("POST", api_clear_group_clases),
     "/api/clase/move":            ("POST", api_move_clase),
     "/api/clase/conjunto/unlink": ("POST", api_unlink_conjunto),
     "/api/asignatura":     ("POST", api_manage_asignatura),
@@ -1290,6 +1408,8 @@ API_ROUTES = {
     "/api/destacada/toggle":         ("POST", api_toggle_destacada),
     "/api/comentario":               ("GET",  api_get_comentario),
     "/api/comentario/set":           ("POST", api_set_comentario),
+    "/api/sinc/config":              ("GET",  api_get_sinc_config),
+    "/api/sinc/exclusion/toggle":    ("POST", api_sinc_exclusion_toggle),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero

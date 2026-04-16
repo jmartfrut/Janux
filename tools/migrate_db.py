@@ -288,6 +288,21 @@ def _m16_clear_conjunto_id_non_exam(conn, **ctx):
     """)
 
 
+def _m17_grupos_sinc_exclusiones(conn, **ctx):
+    """Crea tabla grupos_sinc_exclusiones para el modo espejo entre grupos.
+    Almacena las asignaturas excluidas de la sincronización para un par de grupos.
+    La lógica es 'sync por defecto, con excepciones': todos los cambios se
+    replican al grupo espejo salvo las asignaturas listadas aquí."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS grupos_sinc_exclusiones (
+            grupo_key_origen  TEXT NOT NULL,
+            grupo_key_destino TEXT NOT NULL,
+            asignatura_codigo TEXT NOT NULL,
+            PRIMARY KEY (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+        )
+    """)
+
+
 # ─── REGISTRO DE MIGRACIONES ─────────────────────────────────────────────────
 # NUNCA modificar entradas ya publicadas. Solo añadir nuevas al final.
 
@@ -308,6 +323,7 @@ MIGRATIONS = [
     (14, "Renombra grupo 'unico' → '1' en grupos y tablas relacionadas",        _m14_rename_grupo_unico),
     (15, "Añade columna 'conjunto_id' a clases (vínculo persistente EXP/EXF)",  _m15_conjunto_id_clases),
     (16, "Limpia conjunto_id en clases no-EXP/EXF (fix propagación incorrecta)", _m16_clear_conjunto_id_non_exam),
+    (17, "Crea grupos_sinc_exclusiones para modo espejo entre grupos",           _m17_grupos_sinc_exclusiones),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

@@ -1,6 +1,13 @@
 let DB = null;
 let currentCurso = '1', currentCuat = '1C', currentGroup = '1', currentWeekIdx = 0, currentView = 'semana';
 let editCtx = null;
+
+// ─── MODO ESPEJO ─────────────────────────────────────────────────────────────
+// Permite editar dos grupos simultáneamente. Los movimientos se replican al
+// grupo espejo salvo para las asignaturas marcadas como excluidas.
+let _mirrorMode = false;
+let _mirrorGroupKey = null;      // key del grupo espejo, ej. '2_1C_grupo_2'
+let _mirrorExclusiones = new Set(); // códigos de asignaturas excluidas del espejo
 let _currentEditConjuntoId = null;  // conjunto_id de la clase en edición (null si nueva o sin vínculo)
 let _classroomsAll = [];   // aulas cargadas desde /api/classrooms
 const DAYS = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES'];
@@ -189,6 +196,54 @@ function importDBFileSelected(input) {
   input.value = ''; // reset para poder volver a seleccionar el mismo fichero
   if (!confirm('¿Seguro que deseas sustituir la base de datos actual por "' + file.name + '"?\n\nSe creará una copia de seguridad automática antes de continuar.')) return;
   importDB(file);
+}
+
+// ─── Borrar todas las clases del grupo/cuatrimestre/curso activo ─────────────
+async function clearGroupClases() {
+  const key = getKey();
+  const ordinals = {1:'1er', 2:'2º', 3:'3er', 4:'4º'};
+  const cursoLabel = (ordinals[+currentCurso] || currentCurso + 'º') + ' Curso';
+  const cuatLabel  = currentCuat === '1C' ? '1er Cuatrimestre' : '2º Cuatrimestre';
+  const grupoLabel = 'Grupo ' + currentGroup;
+
+  const confirmMsg =
+    '⚠️  ¿Borrar TODAS las clases del grupo activo?\n\n' +
+    '  ' + cursoLabel + ' · ' + cuatLabel + ' · ' + grupoLabel + '\n\n' +
+    'Se eliminarán todas las clases programadas de este grupo.\n' +
+    'Los días no-lectivos y los exámenes finales NO se modifican.\n\n' +
+    'Esta acción NO SE PUEDE DESHACER.';
+
+  if (!confirm(confirmMsg)) return;
+
+  const btn = document.getElementById('btnClearClases');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Borrando...'; }
+
+  try {
+    const resp = await fetch('/api/clases/clear-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grupo_key: key })
+    });
+    const data = await resp.json();
+
+    if (!data.ok) {
+      alert('Error al borrar clases: ' + (data.error || 'desconocido'));
+      return;
+    }
+
+    await loadData();
+
+    // Feedback visual breve
+    const status = document.getElementById('saveStatus');
+    if (status) {
+      status.textContent = '✓ ' + data.deleted + ' clase(s) eliminadas — ' + grupoLabel + ' · ' + cuatLabel;
+      setTimeout(() => { status.textContent = ''; }, 5000);
+    }
+  } catch (e) {
+    alert('Error de red al borrar clases: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128465; Borrar clases'; }
+  }
 }
 
 async function importDB(file) {
@@ -460,8 +515,23 @@ function buildSubjectCard(cls, color, search, interactive) {
     : modo === 2
     ? `<span class="parcial-badge dtie-badge-label">&#11088; ${DESTACADAS_BADGE}</span>`
     : '';
-  return `<div class="subject-card ${cardColor}${match?' search-highlight':''}"${onclick}${dragAttrs} style="cursor:${interactive?'grab':'default'}">
+  // Botón del modo espejo (solo en modo espejo activo, clases con código)
+  // - Sincronizada → 🔁 visible al hover (clic para excluir)
+  // - Excluida     → 🔒 siempre visible (clic para volver a sincronizar)
+  const isExcluida = _mirrorMode && cls.asig_codigo && _mirrorExclusiones.has(cls.asig_codigo);
+  const mirrorBtnHtml = (_mirrorMode && interactive && cls.asig_codigo && !parcial)
+    ? isExcluida
+      ? `<button class="mirror-excl-btn excluded"
+           onclick="toggleMirrorExclusion('${cls.asig_codigo}',event)"
+           title="Excluida del espejo — clic para volver a sincronizar">&#x1F512;</button>`
+      : `<button class="mirror-excl-btn"
+           onclick="toggleMirrorExclusion('${cls.asig_codigo}',event)"
+           title="Sincronizada con el espejo — clic para excluir">&#x1F501;</button>`
+    : '';
+  const mirrorExclClass = isExcluida ? ' mirror-excluded' : '';
+  return `<div class="subject-card ${cardColor}${match?' search-highlight':''}${mirrorExclClass}"${onclick}${dragAttrs} style="cursor:${interactive?'grab':'default'}">
     ${dtieBtnHtml}
+    ${mirrorBtnHtml}
     ${parcial ? `<span class="parcial-badge">&#128221; ${cls.tipo === 'EXF' ? 'EXAMEN FINAL' : 'EXAMEN PARCIAL'}${cls.observacion ? ' &middot; '+cls.observacion : ''}</span>` : ''}
     ${dtieBadgeHtml}
     <div class="subject-name">${cls.asig_nombre||cls.contenido||''}</div>
@@ -2704,10 +2774,46 @@ function updateGrupoOptions() {
     const label = 'Grupo ' + g;
     return '<option value="' + g + '">' + label + '</option>';
   }).join('');
+  const prevGroup = currentGroup;
   if (!available.includes(currentGroup)) {
     currentGroup = available[0] || '1';
   }
   sel.value = currentGroup;
+
+  // Si el modo espejo está activo y cambiamos de grupo, recargar las exclusiones
+  // para el nuevo par (la key hermana cambia al cambiar currentGroup).
+  if (_mirrorMode && currentGroup !== prevGroup) {
+    _loadMirrorExclusiones();  // async, no bloquea el render
+  }
+
+  // Botón de modo espejo: aparece solo si hay exactamente un grupo hermano
+  const siblingKey = getMirrorSiblingKey();
+  let mirrorBtn = document.getElementById('mirrorToggleBtn');
+  if (siblingKey) {
+    if (!mirrorBtn) {
+      mirrorBtn = document.createElement('button');
+      mirrorBtn.id = 'mirrorToggleBtn';
+      mirrorBtn.className = 'btn btn-mirror';
+      mirrorBtn.onclick = toggleMirrorMode;
+      // Insertar justo después del selector de grupo
+      sel.parentNode.insertAdjacentElement('afterend', mirrorBtn);
+    }
+    const sibNum = siblingKey.split('_grupo_')[1] || '?';
+    mirrorBtn.innerHTML = '&#x1F501;';
+    mirrorBtn.title = _mirrorMode
+      ? `Modo espejo activo → Grupo ${sibNum}. Clic para desactivar.`
+      : `Activar modo espejo con Grupo ${sibNum}`;
+    mirrorBtn.classList.toggle('mirror-active', _mirrorMode);
+    mirrorBtn.style.display = '';
+  } else {
+    // Sin hermano: ocultar botón y desactivar modo si estaba activo
+    if (mirrorBtn) mirrorBtn.style.display = 'none';
+    if (_mirrorMode) {
+      _mirrorMode = false;
+      _mirrorGroupKey = null;
+      _mirrorExclusiones = new Set();
+    }
+  }
 }
 function formatAula(aula) { return aula ? aula.replace('#', '') : ''; }
 function updateHeaderSubtitle() {
@@ -2849,6 +2955,128 @@ function updateConjuntoRow(tipo, conjuntoId = null) {
 }
 
 // ─── DRAG & DROP ───
+// ─── MODO ESPEJO — lógica ─────────────────────────────────────────────────────
+
+/**
+ * Devuelve la key del grupo hermano en el mismo curso/cuatrimestre, o null si no existe.
+ * Solo considera el caso de exactamente 2 grupos (el caso habitual en UPCT).
+ */
+function getMirrorSiblingKey() {
+  if (!DB) return null;
+  const prefix = currentCurso + '_' + currentCuat + '_grupo_';
+  const siblings = Object.keys(DB.grupos)
+    .filter(k => k.startsWith(prefix) && k !== prefix + currentGroup);
+  return siblings.length === 1 ? siblings[0] : null;
+}
+
+/**
+ * Activa o desactiva el modo espejo para el grupo actual.
+ * Carga las exclusiones desde la BD si se activa.
+ */
+async function toggleMirrorMode() {
+  const siblingKey = getMirrorSiblingKey();
+  if (!siblingKey) return;
+
+  _mirrorMode = !_mirrorMode;
+  if (_mirrorMode) {
+    _mirrorGroupKey = siblingKey;
+    await _loadMirrorExclusiones();
+  } else {
+    _mirrorGroupKey = null;
+    _mirrorExclusiones = new Set();
+  }
+  _updateMirrorToggleUI();
+  render();  // re-renderizar para mostrar/ocultar indicadores de exclusión
+}
+
+/** Carga desde la BD la lista de asignaturas excluidas del espejo.
+ *  Usa siempre el hermano del grupo ACTIVO en ese momento. */
+async function _loadMirrorExclusiones() {
+  const siblingKey = getMirrorSiblingKey();
+  if (!siblingKey) return;
+  const myKey = getKey();
+  const url = `/api/sinc/config?origen=${encodeURIComponent(myKey)}&destino=${encodeURIComponent(siblingKey)}`;
+  const data = await fetch(url).then(r => r.json()).catch(() => ({ ok: false }));
+  if (data.ok) {
+    _mirrorExclusiones = new Set(data.exclusiones || []);
+  }
+}
+
+/** Actualiza el aspecto visual del botón de modo espejo. */
+function _updateMirrorToggleUI() {
+  const btn = document.getElementById('mirrorToggleBtn');
+  if (!btn) return;
+  if (_mirrorMode) {
+    btn.classList.add('mirror-active');
+    const sibNum = (_mirrorGroupKey || '').split('_grupo_')[1] || '?';
+    btn.title = `Modo espejo activo → Grupo ${sibNum}. Clic para desactivar.`;
+  } else {
+    btn.classList.remove('mirror-active');
+    const sibKey = getMirrorSiblingKey();
+    const sibNum = (sibKey || '').split('_grupo_')[1] || '?';
+    btn.title = `Activar modo espejo con Grupo ${sibNum}`;
+  }
+}
+
+/**
+ * Activa/desactiva la exclusión de una asignatura del modo espejo.
+ * Requiere que el modo espejo esté activo.
+ */
+async function toggleMirrorExclusion(codigo, event) {
+  if (event) event.stopPropagation();
+  if (!_mirrorMode) return;
+  const siblingKey = getMirrorSiblingKey();
+  if (!siblingKey) return;
+  const myKey = getKey();
+  const res = await api('/api/sinc/exclusion/toggle', {
+    origen:  myKey,
+    destino: siblingKey,
+    codigo:  codigo
+  });
+  if (!res.ok) { showToast('Error al cambiar exclusión: ' + (res.error || ''), true); return; }
+  if (res.action === 'added') {
+    _mirrorExclusiones.add(codigo);
+    showToast(`🔒 "${codigo}" excluida del espejo`);
+  } else {
+    _mirrorExclusiones.delete(codigo);
+    showToast(`🔁 "${codigo}" sincronizada con el espejo`);
+  }
+  render();
+}
+
+/**
+ * Busca la semana equivalente (por número) en el grupo espejo indicado.
+ * mirrorKey: key del grupo espejo (si se omite usa _mirrorGroupKey por compatibilidad).
+ * Devuelve el objeto semana o null si no existe.
+ */
+function _getMirrorWeekByNum(weekNum, mirrorKey) {
+  if (!DB) return null;
+  const key = mirrorKey || _mirrorGroupKey;
+  if (!key) return null;
+  const mirrorGrupo = DB.grupos[key];
+  if (!mirrorGrupo) return null;
+  return mirrorGrupo.semanas.find(s => s.numero === weekNum) || null;
+}
+
+/**
+ * Comprueba si un slot (dia + franja_id) está libre en el grupo espejo
+ * para la semana equivalente a la indicada.
+ * mirrorKey: key del grupo espejo (si se omite usa _mirrorGroupKey por compatibilidad).
+ * Devuelve { free: bool, ocupadaPor: nombre|null }.
+ */
+function _mirrorSlotStatus(weekNum, dia, franjaId, mirrorKey) {
+  const mirrorWeek = _getMirrorWeekByNum(weekNum, mirrorKey);
+  if (!mirrorWeek) return { free: true, ocupadaPor: null };  // semana no existe = libre
+  const ocupadas = (mirrorWeek.clases || []).filter(
+    c => c.dia === dia && c.franja_id === franjaId
+  );
+  if (ocupadas.length === 0) return { free: true, ocupadaPor: null };
+  const nombre = ocupadas[0].asig_nombre || ocupadas[0].contenido || '(clase sin nombre)';
+  return { free: false, ocupadaPor: nombre };
+}
+
+// ─── DRAG & DROP — CLASES ────────────────────────────────────────────────────
+
 let _dragClaseId = null;
 
 function startDrag(event, claseId) {
@@ -2898,9 +3126,72 @@ async function dropClase(event, dia, franjaId) {
 
   // Verificar que no es el mismo slot (mismo dia+franja de la clase origen)
   const week = getCurrentWeek();
-  const origen = week.clases.find(c => c.id === claseId);
-  if (origen && origen.dia === dia && origen.franja_id === franjaId) return;
+  const origenCls = week.clases.find(c => c.id === claseId);
+  if (origenCls && origenCls.dia === dia && origenCls.franja_id === franjaId) return;
 
+  // ── Modo espejo: validación atómica antes de mover ──────────────────────────
+  // Calcular siempre el hermano en función del grupo ACTIVO en este momento,
+  // para que la sincronización funcione independientemente de desde qué grupo
+  // se activó el modo espejo.
+  const activeMirrorKey = _mirrorMode ? getMirrorSiblingKey() : null;
+  const asigCodigo      = origenCls ? origenCls.asig_codigo : null;
+  const debeReplicar    = activeMirrorKey && asigCodigo && !_mirrorExclusiones.has(asigCodigo);
+
+  if (debeReplicar) {
+    const sibNum = activeMirrorKey.split('_grupo_')[1] || '?';
+
+    // 1. Comprobar el slot DESTINO en el grupo espejo
+    const weekNum       = week.numero;
+    const mirrorDestino = _mirrorSlotStatus(weekNum, dia, franjaId, activeMirrorKey);
+    if (!mirrorDestino.free) {
+      showToast(
+        `⛔ No se puede mover: el destino [${dia} franja ${franjaId}] está ocupado en Grupo ${sibNum} por "${mirrorDestino.ocupadaPor}"`,
+        true
+      );
+      return;
+    }
+
+    // 2. Buscar la clase equivalente en el grupo espejo (misma asignatura, mismo slot origen)
+    const mirrorWeek = _getMirrorWeekByNum(weekNum, activeMirrorKey);
+    let mirrorClaseId = null;
+    if (mirrorWeek && origenCls) {
+      const espejo = (mirrorWeek.clases || []).find(
+        c => c.asig_codigo === asigCodigo &&
+             c.dia        === origenCls.dia &&
+             c.franja_id  === origenCls.franja_id
+      );
+      mirrorClaseId = espejo ? espejo.id : null;
+    }
+
+    if (!mirrorClaseId) {
+      // La asignatura no está en el slot origen del espejo → mover solo en origen con aviso
+      showToast(
+        `⚠️ Clase movida solo en Grupo ${currentGroup}. No se encontró la misma asignatura en Grupo ${sibNum} en el slot origen.`,
+        false
+      );
+      const res = await api('/api/clase/move', { id: claseId, dia, franja_id: franjaId });
+      if (res.error) { showToast('No se pudo mover: ' + res.error, true); return; }
+      await loadData();
+      return;
+    }
+
+    // 3. Todo OK: ejecutar los dos movimientos en paralelo
+    const [res1, res2] = await Promise.all([
+      api('/api/clase/move', { id: claseId,       dia, franja_id: franjaId }),
+      api('/api/clase/move', { id: mirrorClaseId, dia, franja_id: franjaId }),
+    ]);
+    if (res1.error || res2.error) {
+      showToast(
+        `⛔ Error al mover en espejo. Grupo ${currentGroup}: ${res1.error || 'OK'} · Grupo ${sibNum}: ${res2.error || 'OK'}`,
+        true
+      );
+    } else {
+      showToast(`🔁 Clase movida en Grupo ${currentGroup} y Grupo ${sibNum}`);
+    }
+    await loadData();
+    return;
+  }
+  // ── Movimiento normal (sin espejo o asignatura excluida) ─────────────────────
   const res = await api('/api/clase/move', { id: claseId, dia, franja_id: franjaId });
   if (res.error) {
     showToast('No se pudo mover: ' + res.error, true);

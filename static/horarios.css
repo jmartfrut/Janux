@@ -450,3 +450,14 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .btn-toggle-sabado.btn-active{background:var(--primary);color:#fff;border-color:var(--primary);opacity:1}
 .sch-th-day.sab,.sch-cell.sab{background:rgba(220,38,38,.04);border-left:2px solid #fca5a5}
 .sch-th-day.sab{color:#b91c1c;font-style:italic}
+
+/* ── Modo Espejo ── */
+.btn-mirror{background:transparent;border:1.5px solid var(--border);color:var(--text-light);font-size:1rem;padding:4px 8px;border-radius:6px;cursor:pointer;transition:all .15s;line-height:1}
+.btn-mirror:hover{border-color:var(--primary);color:var(--primary);background:rgba(37,99,235,.06)}
+.btn-mirror.mirror-active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.mirror-excl-btn{position:absolute;top:3px;right:24px;background:rgba(0,0,0,.12);border:none;cursor:pointer;font-size:.75rem;line-height:1;padding:3px 4px;border-radius:4px;opacity:0;transition:opacity .15s,background .15s;color:#888}
+.subject-card:hover .mirror-excl-btn{opacity:1}
+.mirror-excl-btn.excluded{opacity:1!important;color:#dc2626;background:rgba(220,38,38,.12)}
+.mirror-excl-btn:hover{background:rgba(0,0,0,.22);color:#555}
+.subject-card.mirror-excluded{outline:2px dashed #dc2626;outline-offset:-3px;opacity:.85}
+.subject-card.mirror-excluded .subject-name::after{content:" 🔒";font-size:.7em;opacity:.7}
