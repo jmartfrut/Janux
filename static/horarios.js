@@ -1474,6 +1474,9 @@ function renderParciales() {
 // ─── VISTA EXÁMENES FINALES ──────────────────────────────────────────────────
 let FINALES_DATA = [];
 let FINALES_EXCLUIDAS = new Set(); // claves "periodo|curso|asig_codigo"
+// Últimas asignaturas sin colocar tras distribución automática (null = sin datos aún)
+let _finalesUnplaced = null;       // array de {curso, nom} o null
+let _finalesUnplacedPeriod = null; // período al que corresponde _finalesUnplaced
 let currentFinalPeriod = '1';
 
 function getFinalesPeriods() {
@@ -1663,9 +1666,27 @@ function renderFinales() {
       </div>
     </div>`;
   } else {
-    html += `<div style="background:#dcfce7;border:1.5px solid #16a34a;border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:.82rem;color:#166534">
-      &#10003; Sin conflictos en el per&iacute;odo seleccionado.
-    </div>`;
+    // Sin conflictos: comprobar si quedaron asignaturas sin colocar en la última distribución
+    const hasUnplaced = _finalesUnplaced !== null
+                     && _finalesUnplaced.length > 0
+                     && _finalesUnplacedPeriod === currentFinalPeriod;
+    if (hasUnplaced) {
+      const items = _finalesUnplaced.map(u =>
+        `<span class="final-unplaced-item">${u.curso}&ordm; &mdash; ${_escHtml(u.nom)}</span>`
+      ).join('');
+      html += `<div class="final-unplaced-panel">
+        <span class="final-unplaced-icon">&#9888;&#65039;</span>
+        <span class="final-unplaced-msg">
+          <strong>${_finalesUnplaced.length} asignatura${_finalesUnplaced.length > 1 ? 's' : ''} sin fecha asignada</strong>
+          &mdash; a&ntilde;&aacute;delas manualmente o amplia el per&iacute;odo en <code>config.json</code>
+        </span>
+        <div class="final-unplaced-list">${items}</div>
+      </div>`;
+    } else {
+      html += `<div style="background:#dcfce7;border:1.5px solid #16a34a;border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:.82rem;color:#166534">
+        &#10003; Sin conflictos en el per&iacute;odo seleccionado.
+      </div>`;
+    }
   }
 
   // ── Leyenda ──
@@ -1741,13 +1762,16 @@ function renderFinales() {
             ${e.observacion?`<span class="final-obs">${_escHtml(e.observacion)}</span>`:''}
           </div>`;
         }
-        cellHtml += `<div class="final-add-btn" onclick="openFinalAdd('${iso}','${curso}')">+ a&ntilde;adir</div>`;
+        // Solo mostrar "+ añadir" si la celda está vacía (no hay desdoble en finales)
+        if (entries.length === 0)
+          cellHtml += `<div class="final-add-btn" onclick="openFinalAdd('${iso}','${curso}')">+ a&ntilde;adir</div>`;
 
         const cflStyle = cellConflict ? 'style="outline:3px solid #f59e0b;outline-offset:-2px;background:#fffbeb"' : '';
         html += `<td class="final-cell" ${cflStyle}
+          data-iso="${iso}" data-curso="${curso}"
           ondragover="dragOverFinalCell(event)"
           ondragleave="dragLeaveFinalCell(event)"
-          ondrop="dropFinalExam(event,'${iso}')">${cellHtml}</td>`;
+          ondrop="dropFinalExam(event,'${iso}','${curso}')">${cellHtml}</td>`;
       }
       html += `</tr>`;
     });
@@ -2065,6 +2089,10 @@ async function autoDistributeExams() {
   const btn = document.getElementById('btnAutoDistrib');
   if (btn) { btn.disabled = true; btn.textContent = '⟳ Calculando…'; }
 
+  // Limpiar estado de sin-colocar del período activo al iniciar nueva distribución
+  _finalesUnplaced = null;
+  _finalesUnplacedPeriod = null;
+
   try {
     const periods = getFinalesPeriods();
     const period  = periods[currentFinalPeriod];
@@ -2130,7 +2158,11 @@ async function autoDistributeExams() {
       showToast('No hay asignaturas pendientes de colocar');
     }
 
-    // 9. Avisar explícitamente de los que no se pudieron colocar
+    // 9. Guardar estado de sin-colocar (lo usará renderFinales en el panel de estado)
+    _finalesUnplaced       = unplaced;
+    _finalesUnplacedPeriod = currentFinalPeriod;
+
+    // 10. Avisar explícitamente de los que no se pudieron colocar
     if (unplaced.length > 0) {
       const lines = unplaced.map(u => `  \u2022 ${u.curso}\u00ba curso \u2014 ${u.nom}`).join('\n');
       alert(`\u26A0\uFE0F ${unplaced.length} ex\u00e1men(es) sin colocar por falta de slots disponibles:\n\n${lines}\n\nA\u00f1\u00e1delos manualmente o revisa el per\u00edodo de ex\u00e1menes en config.json.`);
@@ -3216,9 +3248,10 @@ function startDragFinal(event, examId) {
 
 function endDragFinal(event) {
   event.currentTarget.classList.remove('dragging');
-  document.querySelectorAll('.final-cell.drag-over-final').forEach(el =>
-    el.classList.remove('drag-over-final')
-  );
+  document.querySelectorAll('.final-cell.drag-over-final, .final-cell.drag-swap-final').forEach(el => {
+    el.classList.remove('drag-over-final');
+    el.classList.remove('drag-swap-final');
+  });
 }
 
 function dragOverFinalCell(event) {
@@ -3226,20 +3259,30 @@ function dragOverFinalCell(event) {
   event.preventDefault();
   event.dataTransfer.dropEffect = 'move';
   const td = event.currentTarget;
-  document.querySelectorAll('.final-cell.drag-over-final').forEach(el => {
-    if (el !== td) el.classList.remove('drag-over-final');
+  const targetIso = td.dataset.iso;
+  const exam = FINALES_DATA.find(f => f.id === _dragFinalId);
+  // Detectar si la celda destino ya tiene examen del mismo curso → swap visual
+  const willSwap = exam && targetIso && FINALES_DATA.some(
+    f => f.id !== _dragFinalId && f.fecha === targetIso && String(f.curso) === String(exam.curso)
+  );
+  document.querySelectorAll('.final-cell.drag-over-final, .final-cell.drag-swap-final').forEach(el => {
+    if (el !== td) { el.classList.remove('drag-over-final'); el.classList.remove('drag-swap-final'); }
   });
-  td.classList.add('drag-over-final');
+  td.classList.toggle('drag-swap-final', !!willSwap);
+  td.classList.toggle('drag-over-final', !willSwap);
 }
 
 function dragLeaveFinalCell(event) {
-  if (!event.currentTarget.contains(event.relatedTarget))
+  if (!event.currentTarget.contains(event.relatedTarget)) {
     event.currentTarget.classList.remove('drag-over-final');
+    event.currentTarget.classList.remove('drag-swap-final');
+  }
 }
 
-async function dropFinalExam(event, iso) {
+async function dropFinalExam(event, iso, _curso) {
   event.preventDefault();
   event.currentTarget.classList.remove('drag-over-final');
+  event.currentTarget.classList.remove('drag-swap-final');
   const examId = _dragFinalId;
   _dragFinalId = null;
   if (!examId) return;
@@ -3247,18 +3290,43 @@ async function dropFinalExam(event, iso) {
   const exam = FINALES_DATA.find(f => f.id === examId);
   if (!exam || exam.fecha === iso) return; // misma celda, nada que hacer
 
-  const res = await api('/api/finales/set', {
-    id:           examId,
-    fecha:        iso,
-    curso:        exam.curso,
-    asig_nombre:  exam.asig_nombre,
-    asig_codigo:  exam.asig_codigo || '',
-    turno:        exam.turno || 'mañana',
-    observacion:  exam.observacion || '',
-    action:       'set'
-  });
-  if (res.error) { showToast('Error al mover: ' + res.error, true); return; }
-  showToast('\u2192 Ex\u00e1men movido');
+  // Buscar examen existente en la celda destino del mismo curso → intercambio
+  const swapTarget = FINALES_DATA.find(
+    f => f.id !== examId && f.fecha === iso && String(f.curso) === String(exam.curso)
+  );
+
+  if (swapTarget) {
+    // ── SWAP: intercambiar fechas entre los dos exámenes ──────────────────────
+    const origFecha = exam.fecha;
+    const r1 = await api('/api/finales/set', {
+      id: swapTarget.id, fecha: origFecha,
+      curso: swapTarget.curso, asig_nombre: swapTarget.asig_nombre,
+      asig_codigo: swapTarget.asig_codigo || '',
+      turno: swapTarget.turno || 'ma\u00f1ana',
+      observacion: swapTarget.observacion || '', action: 'set'
+    });
+    if (r1.error) { showToast('Error en intercambio: ' + r1.error, true); return; }
+    const r2 = await api('/api/finales/set', {
+      id: examId, fecha: iso,
+      curso: exam.curso, asig_nombre: exam.asig_nombre,
+      asig_codigo: exam.asig_codigo || '',
+      turno: exam.turno || 'ma\u00f1ana',
+      observacion: exam.observacion || '', action: 'set'
+    });
+    if (r2.error) { showToast('Error en intercambio: ' + r2.error, true); return; }
+    showToast('\u21c4 Ex\u00e1menes intercambiados');
+  } else {
+    // ── MOVER: celda destino vacía ────────────────────────────────────────────
+    const res = await api('/api/finales/set', {
+      id: examId, fecha: iso,
+      curso: exam.curso, asig_nombre: exam.asig_nombre,
+      asig_codigo: exam.asig_codigo || '',
+      turno: exam.turno || 'ma\u00f1ana',
+      observacion: exam.observacion || '', action: 'set'
+    });
+    if (res.error) { showToast('Error al mover: ' + res.error, true); return; }
+    showToast('\u2192 Ex\u00e1men movido');
+  }
   await loadFinales();
 }
 

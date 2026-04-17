@@ -394,6 +394,12 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .final-entry:hover{filter:brightness(.93)}
 .final-entry.dragging{opacity:.35;cursor:grabbing}
 .final-cell.drag-over-final{background:#d4edda!important;outline:2px dashed #27ae60;outline-offset:-2px}
+.final-cell.drag-swap-final{background:#fef3c7!important;outline:2px dashed #d97706;outline-offset:-2px}
+.final-unplaced-panel{background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:.82rem;color:#991b1b;display:flex;flex-direction:column;gap:6px}
+.final-unplaced-icon{font-size:1rem}
+.final-unplaced-msg{line-height:1.5}
+.final-unplaced-list{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px}
+.final-unplaced-item{background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;padding:2px 8px;font-size:.77rem;color:#7f1d1d;white-space:nowrap}
 .final-entry-1{background:#dbeafe;border-color:#2563eb}
 .final-entry-2{background:#dcfce7;border-color:#16a34a}
 .final-entry-3{background:#fef9c3;border-color:#ca8a04}
