@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.32.2"
+APP_VERSION = "1.33.1"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1699,6 +1699,7 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
                 SELECT
                     g.curso,
                     g.cuatrimestre,
+                    g.grupo,
                     s.numero  AS semana_num,
                     c.dia,
                     c.tipo,
@@ -1717,7 +1718,7 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
             """).fetchall()
             conn.close()
 
-            # ── Agrupar y deduplicar por (fecha, curso, asig_codigo, tipo) ──
+            # ── Agrupar y deduplicar por (fecha, curso, asig_codigo, tipo); acumular grupos ──
             seen = {}
             for r in rows:
                 cuat = r['cuatrimestre']
@@ -1739,7 +1740,21 @@ class HorarioHandler(http.server.BaseHTTPRequestHandler):
                         'asig_nombre': r['asig_nombre'] or '',
                         'turno':       turno,
                         'observacion': obs,
+                        'grupos':      [],
                     }
+                grupo_num = str(r.get('grupo', '') or '')
+                if grupo_num and grupo_num not in seen[key]['grupos']:
+                    seen[key]['grupos'].append(grupo_num)
+
+            # Convertir lista de grupos a cadena legible: 'Gr 1' / 'G1-G2-G3'
+            for v in seen.values():
+                grupos = sorted(v.pop('grupos', []))
+                if len(grupos) == 1:
+                    v['grupo'] = f"Gr {grupos[0]}"
+                elif len(grupos) > 1:
+                    v['grupo'] = '-'.join(f"G{g}" for g in grupos)
+                else:
+                    v['grupo'] = ''
 
             exams = sorted(seen.values(), key=lambda e: (e['fecha'], str(e['curso'])))
 

@@ -1062,36 +1062,44 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
   function practicaCell(map, tdCls, espH) {
     const entries = Object.entries(map).sort((a,b) => a[0].localeCompare(b[0], undefined, {numeric:true}));
     if (!entries.length) {
-      // Sin sesiones: si fichas espera 0 → normal; si espera >0 → rojo
+      // Sin sesiones: si fichas espera 0 → normal; si espera >0 → rojo (siempre es déficit)
       if (espH === null || espH === undefined) return `<td class="${tdCls}">&mdash;</td>`;
       const ok = (espH === 0);
-      const style = ok ? '' : 'background:#fee2e2;border-left:3px solid #dc2626';
+      const cellCls = ok ? '' : ' cell-under';
       const badge = ok ? '' : `<div class="ficha-badge err">Ficha: ${espH}h</div>`;
-      return `<td class="${tdCls}" style="${style}">&mdash;${badge}</td>`;
+      return `<td class="${tdCls}${cellCls}">&mdash;${badge}</td>`;
     }
     // Sin subgrupos nombrados
     if (entries.length === 1 && entries[0][0] === '') {
       const n = entries[0][1], h = n * 2;
       const ok = (espH === null || espH === undefined || h === espH);
-      const style = ok ? '' : 'background:#fee2e2;border-left:3px solid #dc2626';
-      const espBadge = (!ok) ? `<div class="ficha-badge err">Ficha: ${espH}h</div>` :
-                       (espH !== null && espH !== undefined) ? `<div class="ficha-badge ok">&#10003; ${espH}h</div>` : '';
-      return `<td class="${tdCls}" style="${style}"><strong>${h}h</strong><small>${n}&nbsp;ses.</small>${espBadge}</td>`;
+      const over = !ok && espH !== null && espH !== undefined && h > espH;
+      const cellCls = ok ? '' : over ? ' cell-over' : ' cell-under';
+      const espBadge = (!ok)
+        ? over
+          ? `<div class="ficha-badge warn">&#8679; Ficha: ${espH}h</div>`
+          : `<div class="ficha-badge err">Ficha: ${espH}h</div>`
+        : (espH !== null && espH !== undefined) ? `<div class="ficha-badge ok">&#10003; ${espH}h</div>` : '';
+      return `<td class="${tdCls}${cellCls}"><strong>${h}h</strong><small>${n}&nbsp;ses.</small>${espBadge}</td>`;
     }
     // Con subgrupos
     const rows = entries.map(([sg, n]) => {
       const h = n * 2;
       const lbl = sg ? `Sg.${sg}` : 'Todos';
       const ok = (espH === null || espH === undefined || h === espH);
-      const rowStyle = ok ? '' : 'background:#fecaca;border-radius:3px';
-      const errTip = ok ? '' : `<span class="sg-err" title="Fichas: ${espH}h">&#9888;</span>`;
+      const over = !ok && espH !== null && h > espH;
+      const rowStyle = ok ? '' : over ? 'background:#fef9c3;border-radius:3px' : 'background:#fecaca;border-radius:3px';
+      const errTip = ok ? '' : over
+        ? `<span class="sg-err" style="color:#b45309" title="Fichas: ${espH}h">&#8679;</span>`
+        : `<span class="sg-err" title="Fichas: ${espH}h">&#9888;</span>`;
       return `<div class="sg-row" style="${rowStyle}"><span class="sg-label">${lbl}</span><span class="sg-hours">${h}h</span><span class="sg-ses">${n}&nbsp;ses.</span>${errTip}</div>`;
     }).join('');
     const anyErr = espH !== null && espH !== undefined && entries.some(([,n]) => n*2 !== espH);
-    const cellStyle = anyErr ? 'background:#fee2e2;border-left:3px solid #dc2626' : '';
+    const anyUnder = anyErr && entries.some(([,n]) => n*2 < (espH || 0));
+    const cellCls = anyErr ? (anyUnder ? ' cell-under' : ' cell-over') : '';
     const espBadge = (espH !== null && espH !== undefined)
-      ? `<div class="ficha-badge ${anyErr?'err':'ok'}">${anyErr?'&#9888;':'&#10003;'} Ficha: ${espH}h/sg</div>` : '';
-    return `<td class="${tdCls} sg-cell" style="${cellStyle}"><div class="sg-breakdown">${rows}</div>${espBadge}</td>`;
+      ? `<div class="ficha-badge ${anyErr ? (anyUnder ? 'err' : 'warn') : 'ok'}">${anyErr ? (anyUnder ? '&#9888;' : '&#8679;') : '&#10003;'} Ficha: ${espH}h/sg</div>` : '';
+    return `<td class="${tdCls} sg-cell${cellCls}"><div class="sg-breakdown">${rows}</div>${espBadge}</td>`;
   }
 
   // ── Celda para parcial5 / parcial6: sesiones × 2h vs valor de ficha
@@ -1099,10 +1107,11 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
     const h = n * 2;
     if (!n && !espH) return `<td class="${tdCls}">&mdash;</td>`;
     const ok = (espH === null || espH === undefined || h === espH);
-    const style = ok ? '' : 'background:#fee2e2;border-left:3px solid #dc2626';
+    const over = !ok && espH !== null && espH !== undefined && h > espH;
+    const cellCls = ok ? '' : over ? ' cell-over' : ' cell-under';
     const badge = (espH !== null && espH !== undefined)
-      ? `<div class="ficha-badge ${ok?'ok':'err'}">${ok?'&#10003;':'&#9888;'} Ficha:&nbsp;${espH}h</div>` : '';
-    return `<td class="${tdCls}" style="${style}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ex.</small>` : '&mdash;'}${badge}</td>`;
+      ? `<div class="ficha-badge ${ok ? 'ok' : over ? 'warn' : 'err'}">${ok ? '&#10003;' : over ? '&#8679;' : '&#9888;'} Ficha:&nbsp;${espH}h</div>` : '';
+    return `<td class="${tdCls}${cellCls}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ex.</small>` : '&mdash;'}${badge}</td>`;
   }
 
   const thead = `<thead><tr>
@@ -1165,16 +1174,29 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
 
     // ¿Algún error en la asignatura? AF6 excluido del chequeo (es solo referencia)
     const rawErr = !teorOk || !af3Ok || !infoOk || !labOk || !p5Ok || !totalOk;
+    // Detectar si la discrepancia es por exceso (sobran horas) en lugar de déficit (faltan)
+    const teorOver  = !teorOk && espAf1 !== null && teorReal > espAf1;
+    const af3Over   = !af3Ok  && espAf3 !== null && af3Real  > espAf3;
+    const infoOver  = !infoOk && espAf4 !== null && infoEntries.length > 0 && infoEntries.every(([,n]) => n*2 > espAf4);
+    const labOver   = !labOk  && espAf2 !== null && labEntries.length  > 0 && labEntries.every(([,n]) => n*2 > espAf2);
+    const p5Over    = !p5Ok   && espAf5 !== null && p5Real > espAf5;
+    const totalOver = !totalOk && presEsp !== null && presReal > presEsp;
+    // rawOver: hay errores pero todos son "sobran" (ninguno es "faltan")
+    const rawOver = rawErr && (teorOk || teorOver) && (af3Ok || af3Over) && (infoOk || infoOver) && (labOk || labOver) && (p5Ok || p5Over) && (totalOk || totalOver);
     const overrideKey = a.codigo + '::' + (groupKey || '');
     const isOverride = (DB._overrideSet || new Set()).has(overrideKey);
     const rowErr = rawErr && !isOverride;
     const rowErrStyle = isOverride
       ? 'background:#f5f3ff'
-      : rowErr ? 'background:#fde8e8' : 'background:#f0fdf4';
+      : rowErr
+        ? (rawOver ? 'background:#fefce8' : 'background:#fde8e8')
+        : 'background:#f0fdf4';
     const nameStyle = isOverride
       ? 'border-left:5px solid #7c3aed;background:#ede9fe;padding-left:12px'
       : rowErr
-        ? 'border-left:5px solid #dc2626;background:#fee2e2;color:#991b1b;padding-left:12px'
+        ? (rawOver
+           ? 'border-left:5px solid #f59e0b;background:#fef3c7;color:#78350f;padding-left:12px'
+           : 'border-left:5px solid #dc2626;background:#fee2e2;color:#991b1b;padding-left:12px')
         : 'border-left:5px solid #16a34a;background:#dcfce7;padding-left:12px';
 
     // ── Celdas ───────────────────────────────────────────────────────────
@@ -1188,17 +1210,17 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
       if (t === 'teoria') {
         const h = a.counts.teoria * 2, n = a.counts.teoria;
         const espBadge = (espAf1 !== null)
-          ? `<div class="ficha-badge ${teorOk?'ok':'err'}">${teorOk?'&#10003;':'&#9888;'} Ficha: ${espAf1}h</div>` : '';
-        const cellStyle = teorOk ? '' : 'background:#fee2e2;border-left:3px solid #dc2626';
-        return `<td class="${ACT_META.teoria.tdCls}" style="${cellStyle}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ses.</small>` : '&mdash;'}${espBadge}</td>`;
+          ? `<div class="ficha-badge ${teorOk ? 'ok' : teorOver ? 'warn' : 'err'}">${teorOk ? '&#10003;' : teorOver ? '&#8679;' : '&#9888;'} Ficha: ${espAf1}h</div>` : '';
+        const cellCls = teorOk ? '' : teorOver ? ' cell-over' : ' cell-under';
+        return `<td class="${ACT_META.teoria.tdCls}${cellCls}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ses.</small>` : '&mdash;'}${espBadge}</td>`;
       }
       if (t === 'af3') {
         const h = a.counts.af3 * 2, n = a.counts.af3;
         const showBadge = espAf3 !== null && (espAf3 > 0 || h > 0);
         const espBadge = showBadge
-          ? `<div class="ficha-badge ${af3Ok?'ok':'err'}">${af3Ok?'&#10003;':'&#9888;'} Ficha: ${espAf3}h</div>` : '';
-        const cellStyle = af3Ok ? '' : 'background:#fee2e2;border-left:3px solid #dc2626';
-        return `<td class="${ACT_META.af3.tdCls}" style="${cellStyle}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ses.</small>` : '&mdash;'}${espBadge}</td>`;
+          ? `<div class="ficha-badge ${af3Ok ? 'ok' : af3Over ? 'warn' : 'err'}">${af3Ok ? '&#10003;' : af3Over ? '&#8679;' : '&#9888;'} Ficha: ${espAf3}h</div>` : '';
+        const cellCls = af3Ok ? '' : af3Over ? ' cell-over' : ' cell-under';
+        return `<td class="${ACT_META.af3.tdCls}${cellCls}">${h ? `<strong>${h}h</strong><small>${n}&nbsp;ses.</small>` : '&mdash;'}${espBadge}</td>`;
       }
       if (t === 'parcial5') return parcialAfCell(a.counts.parcial5, espAf5, ACT_META.parcial5.tdCls);
       if (t === 'parcial6') {
@@ -1216,8 +1238,9 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
 
     // Columna total — horas reales (AF1+AF2+AF3+AF4+AF5) vs ficha — AF6 excluido
     const totalBadge = (presEsp !== null)
-      ? `<small style="display:block;color:${totalOk?'#166534':'#dc2626'};font-weight:700">${totalOk?'&#10003;':('&#9888; ficha:'+presEsp+'h')}</small>` : '';
-    const totalStyle = totalOk ? '' : 'background:#fee2e2;color:#dc2626';
+      ? `<small style="display:block;color:${totalOk ? '#166534' : totalOver ? '#b45309' : '#dc2626'};font-weight:700">${totalOk ? '&#10003;' : totalOver ? ('&#8679; ficha:' + presEsp + 'h') : ('&#9888; ficha:' + presEsp + 'h')}</small>` : '';
+    const totalCls = totalOk ? '' : totalOver ? ' cell-over' : ' cell-under';
+    const totalColorStyle = totalOk ? '' : totalOver ? 'color:#b45309' : 'color:#dc2626';
 
     // Badge de estado y botón de override
     let statusBadge = '';
@@ -1226,7 +1249,9 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
       statusBadge = '<span class="ficha-override-badge">&#10003; Verificado manualmente</span>';
       overrideBtn = `<button class="btn-override btn-unoverride" onclick="toggleFichaOverride('${a.codigo}','unset','${groupKey||''}')" title="Quitar override y volver a mostrar el estado real">&#10006; Quitar verificación</button>`;
     } else if (rawErr && f) {
-      statusBadge = '<span class="ficha-err-badge">&#9888; No cumple ficha</span>';
+      statusBadge = rawOver
+        ? '<span class="ficha-warn-badge">&#8679; Horas excedidas</span>'
+        : '<span class="ficha-err-badge">&#9888; No cumple ficha</span>';
       overrideBtn = `<button class="btn-override" onclick="toggleFichaOverride('${a.codigo}','set','${groupKey||''}')" title="Marcar como correcto aunque no cuadre con la ficha">&#10003; Marcar sin conflicto</button>`;
     } else if (f) {
       statusBadge = '<span class="ficha-ok-badge">&#10003; OK ficha</span>';
@@ -1243,7 +1268,7 @@ function buildActTable(allAsigs, groupKey, opts = {}) {
         ${statusBadge}${overrideBtn}
       </td>
       ${cells}
-      <td class="act-total" style="${totalStyle}">${totalReal}h${totalBadge}</td>
+      <td class="act-total${totalCls}" style="${totalColorStyle}">${totalReal}h${totalBadge}</td>
     </tr>`;
   }).join('');
 
@@ -1461,13 +1486,6 @@ function renderParciales() {
   }
   html += `</div>`;
 
-  // ── 8. Botón exportar PDF ──
-  html += `<div style="display:flex;justify-content:flex-end;padding:10px 0 4px">
-    <button class="btn-export-pdf" id="btnExportParcPdf" onclick="exportParcialesPdf()">
-      &#128438; Exportar PDF
-    </button>
-  </div>`;
-
   document.getElementById('parcGrid').innerHTML = html;
 }
 
@@ -1639,9 +1657,6 @@ function renderFinales() {
     </button>
     <button class="btn-reset-manual" id="btnResetManual" onclick="resetManualExams()">
       &#128465; Clear
-    </button>
-    <button class="btn-export-pdf" id="btnExportFinalPdf" onclick="exportFinalesPdf()">
-      &#128438; Exportar PDF
     </button>
   </div>`;
 
@@ -2229,7 +2244,7 @@ async function exportFinalesPdf() {
   } catch(e) {
     alert('Error al generar el PDF: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '&#128438; Exportar PDF'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128438; PDF Finales'; }
   }
 }
 
@@ -2254,7 +2269,7 @@ async function exportParcialesPdf() {
   } catch(e) {
     alert('Error al generar el PDF: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '&#128438; Exportar PDF'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#128438; PDF Parciales'; }
   }
 }
 

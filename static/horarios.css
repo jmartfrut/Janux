@@ -167,7 +167,11 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .ficha-badge{font-size:.62rem;font-weight:700;margin-top:3px;padding:1px 5px;border-radius:3px;display:inline-block}
 .ficha-badge.ok{background:#dcfce7;color:#166534}
 .ficha-badge.err{background:#fee2e2;color:#dc2626}
+.ficha-badge.warn{background:#fef3c7;color:#92400e}
+.cell-over{background:#fffbeb!important;border-left:3px solid #f59e0b!important}
+.cell-under{background:#fee2e2!important;border-left:3px solid #dc2626!important}
 .ficha-err-badge{display:block;margin-top:2px;font-size:.62rem;font-weight:700;color:#dc2626;background:#fee2e2;padding:1px 4px;border-radius:3px}
+.ficha-warn-badge{display:block;margin-top:2px;font-size:.62rem;font-weight:700;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:3px}
 .ficha-ok-badge{display:block;margin-top:2px;font-size:.62rem;font-weight:700;color:#166534;background:#dcfce7;padding:1px 4px;border-radius:3px}
 .ficha-override-badge{display:block;margin-top:2px;font-size:.62rem;font-weight:700;color:#7c3aed;background:#ede9fe;padding:1px 4px;border-radius:3px}
 .anual-badge{display:inline-block;margin-left:6px;font-size:.6rem;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:1px 5px;border-radius:3px;vertical-align:middle;cursor:default}

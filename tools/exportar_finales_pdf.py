@@ -219,16 +219,32 @@ def _portrait_table(exams, titulo, subtitulo):
         return (str(e.get('curso', '9')), e['fecha'])
     sorted_exams = sorted(exams, key=sort_key)
 
-    # Columnas: Código | Asignatura | Curso | Turno | Fecha | Aulas
-    col_w = [22*mm, 85*mm, 13*mm, 13*mm, 20*mm, 17*mm]
-    head_row = [
-        Paragraph('Código',      sHead),
-        Paragraph('Asignatura',  sHead),
-        Paragraph('Curso',       sHead),
-        Paragraph('Turno',       sHead),
-        Paragraph('Fecha',       sHead),
-        Paragraph('Aulas',       sHead),
-    ]
+    # Detectar si los exámenes incluyen información de grupo (parciales)
+    has_grupo = any(e.get('grupo') for e in sorted_exams)
+
+    # Columnas: Código | Asignatura | Curso | Turno | Fecha | [Grupo] | Aulas/Obs
+    if has_grupo:
+        # 7 columnas: redistribuir 170mm incluyendo Grupo (16mm); Asignatura reducida
+        col_w = [22*mm, 69*mm, 13*mm, 13*mm, 18*mm, 16*mm, 19*mm]
+        head_row = [
+            Paragraph('Código',      sHead),
+            Paragraph('Asignatura',  sHead),
+            Paragraph('Curso',       sHead),
+            Paragraph('Turno',       sHead),
+            Paragraph('Fecha',       sHead),
+            Paragraph('Grupo',       sHead),
+            Paragraph('Observación', sHead),
+        ]
+    else:
+        col_w = [22*mm, 85*mm, 13*mm, 13*mm, 20*mm, 17*mm]
+        head_row = [
+            Paragraph('Código',      sHead),
+            Paragraph('Asignatura',  sHead),
+            Paragraph('Curso',       sHead),
+            Paragraph('Turno',       sHead),
+            Paragraph('Fecha',       sHead),
+            Paragraph('Aulas',       sHead),
+        ]
     rows = [head_row]
     course_change_rows = []   # índices de fila (en la tabla) donde cambia el curso
     prev_curso = None
@@ -242,14 +258,25 @@ def _portrait_table(exams, titulo, subtitulo):
         if prev_curso is not None and curso != prev_curso:
             course_change_rows.append(i + 1)   # primera fila del nuevo curso
         prev_curso = curso
-        rows.append([
-            Paragraph(str(e.get('asig_codigo', '')), sCellC),
-            Paragraph(str(e.get('asig_nombre', '')), sCell),
-            Paragraph(curso,                          sCellC),
-            Paragraph(turno_s,                        sT),
-            Paragraph(_fmt_date_short(fecha_d),       sCellC),
-            Paragraph(str(e.get('observacion', '')),  sCellC),
-        ])
+        if has_grupo:
+            rows.append([
+                Paragraph(str(e.get('asig_codigo', '')), sCellC),
+                Paragraph(str(e.get('asig_nombre', '')), sCell),
+                Paragraph(curso,                          sCellC),
+                Paragraph(turno_s,                        sT),
+                Paragraph(_fmt_date_short(fecha_d),       sCellC),
+                Paragraph(str(e.get('grupo', '')),        sCellC),
+                Paragraph(str(e.get('observacion', '')),  sCellC),
+            ])
+        else:
+            rows.append([
+                Paragraph(str(e.get('asig_codigo', '')), sCellC),
+                Paragraph(str(e.get('asig_nombre', '')), sCell),
+                Paragraph(curso,                          sCellC),
+                Paragraph(turno_s,                        sT),
+                Paragraph(_fmt_date_short(fecha_d),       sCellC),
+                Paragraph(str(e.get('observacion', '')),  sCellC),
+            ])
 
     data_table = Table(rows, colWidths=col_w, repeatRows=1)
     ts = [
