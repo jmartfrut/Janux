@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.33.2"
+APP_VERSION = "1.33.3"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -2070,6 +2070,17 @@ if __name__ == "__main__":
         _sys.path.insert(0, _tools_dir)
     from migrate_db import migrate as _migrate_db
     _migrate_db(DB_PATH, curso_label=CURSO_LABEL)
+
+    # Belt-and-suspenders: verificar columnas críticas de forma directa e independiente
+    # del sistema de migraciones. Cubre el caso de BDs con schema_version correcto pero
+    # columna ausente (puede ocurrir con Python 3.12+ por cambios en el manejo de DDL).
+    import sqlite3 as _sqlite3
+    with _sqlite3.connect(DB_PATH) as _chk:
+        _cols = {r[1] for r in _chk.execute("PRAGMA table_info(clases)").fetchall()}
+        if "conjunto_id" not in _cols:
+            _chk.execute("ALTER TABLE clases ADD COLUMN conjunto_id TEXT DEFAULT NULL")
+            _chk.commit()
+            print("  ✅ [repair] Columna 'conjunto_id' añadida a tabla clases.")
 
     title = f"GESTOR DE HORARIOS {DEGREE_ACRONYM} — {INSTITUTION_ACRONYM}"
     print(f"\n  ╔══════════════════════════════════════════════╗")
