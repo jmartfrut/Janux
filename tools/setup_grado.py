@@ -444,6 +444,12 @@ def create_tables(conn):
             ts         TEXT DEFAULT '',
             PRIMARY KEY (grupo_key)
         );
+        CREATE TABLE IF NOT EXISTS grupos_sinc_exclusiones (
+            grupo_key_origen  TEXT NOT NULL,
+            grupo_key_destino TEXT NOT NULL,
+            asignatura_codigo TEXT NOT NULL,
+            PRIMARY KEY (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+        );
     """)
     conn.commit()
 

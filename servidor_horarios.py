@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.33.3"
+APP_VERSION = "1.33.4"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -2071,9 +2071,10 @@ if __name__ == "__main__":
     from migrate_db import migrate as _migrate_db
     _migrate_db(DB_PATH, curso_label=CURSO_LABEL)
 
-    # Belt-and-suspenders: verificar columnas críticas de forma directa e independiente
-    # del sistema de migraciones. Cubre el caso de BDs con schema_version correcto pero
-    # columna ausente (puede ocurrir con Python 3.12+ por cambios en el manejo de DDL).
+    # Belt-and-suspenders: verificar columnas/tablas críticas de forma directa e
+    # independiente del sistema de migraciones. Cubre el caso de BDs con
+    # schema_version correcto pero objeto ausente (p.ej. BDs nuevas creadas con
+    # setup_grado.py antes de que create_tables() incluyera la tabla).
     import sqlite3 as _sqlite3
     with _sqlite3.connect(DB_PATH) as _chk:
         _cols = {r[1] for r in _chk.execute("PRAGMA table_info(clases)").fetchall()}
@@ -2081,6 +2082,20 @@ if __name__ == "__main__":
             _chk.execute("ALTER TABLE clases ADD COLUMN conjunto_id TEXT DEFAULT NULL")
             _chk.commit()
             print("  ✅ [repair] Columna 'conjunto_id' añadida a tabla clases.")
+        _tables = {r[0] for r in _chk.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        if "grupos_sinc_exclusiones" not in _tables:
+            _chk.execute("""
+                CREATE TABLE IF NOT EXISTS grupos_sinc_exclusiones (
+                    grupo_key_origen  TEXT NOT NULL,
+                    grupo_key_destino TEXT NOT NULL,
+                    asignatura_codigo TEXT NOT NULL,
+                    PRIMARY KEY (grupo_key_origen, grupo_key_destino, asignatura_codigo)
+                )
+            """)
+            _chk.commit()
+            print("  ✅ [repair] Tabla 'grupos_sinc_exclusiones' creada.")
 
     title = f"GESTOR DE HORARIOS {DEGREE_ACRONYM} — {INSTITUTION_ACRONYM}"
     print(f"\n  ╔══════════════════════════════════════════════╗")
