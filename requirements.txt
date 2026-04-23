@@ -9,3 +9,6 @@ pdfplumber>=0.11
 
 # Plantillas HTML del servidor
 jinja2>=3.0
+
+# Generación de PDFs (exportar_finales_pdf.py y vista Finales)
+reportlab>=4.0
