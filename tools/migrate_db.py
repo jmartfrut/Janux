@@ -303,6 +303,15 @@ def _m17_grupos_sinc_exclusiones(conn, **ctx):
     """)
 
 
+def _m18_repair_conjunto_id(conn, **ctx):
+    """Garantiza que 'conjunto_id' existe en clases aunque m15 quedara registrada
+    sin aplicarse realmente (BD restaurada de backup o fallo silencioso previo).
+    Idempotente: solo actúa si la columna está ausente."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(clases)").fetchall()}
+    if "conjunto_id" not in cols:
+        conn.execute("ALTER TABLE clases ADD COLUMN conjunto_id TEXT DEFAULT NULL")
+
+
 # ─── REGISTRO DE MIGRACIONES ─────────────────────────────────────────────────
 # NUNCA modificar entradas ya publicadas. Solo añadir nuevas al final.
 
@@ -324,6 +333,7 @@ MIGRATIONS = [
     (15, "Añade columna 'conjunto_id' a clases (vínculo persistente EXP/EXF)",  _m15_conjunto_id_clases),
     (16, "Limpia conjunto_id en clases no-EXP/EXF (fix propagación incorrecta)", _m16_clear_conjunto_id_non_exam),
     (17, "Crea grupos_sinc_exclusiones para modo espejo entre grupos",           _m17_grupos_sinc_exclusiones),
+    (18, "Repair: garantiza conjunto_id en clases si m15 quedó sin aplicarse",  _m18_repair_conjunto_id),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]
