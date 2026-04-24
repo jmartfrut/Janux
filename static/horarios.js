@@ -2618,6 +2618,169 @@ function buildEvolucionSVG(weekNums, sgLab, sgInfo) {
   return { svg, series: allSeries.map((s,i) => ({ sg: s.sg, tipo: s.tipo, color: s.color, dash: s.dash })) };
 }
 
+
+/**
+ * Calcula las horas de teoría acumuladas semana a semana, POR ASIGNATURA, para un grupo.
+ * Deduplicación por (asig_codigo, semana_num, dia, franja_id).
+ * Retorna: { asig_codigo: { nombre, weekNums:[…], horasSem:[…], horasAcum:[…] } }
+ */
+function computeTeoriaAcumuladaPorAsig(weeks) {
+  const seenTeoria = new Set();
+  const byAsig = {};
+
+  weeks.forEach((w, wi) => {
+    w.clases.forEach(c => {
+      if (!c.asig_codigo || c.es_no_lectivo) return;
+      const tipo = getActType(c);
+      if (tipo !== 'teoria') return;
+      const dk = `${c.asig_codigo}|${w.numero}|${c.dia}|${c.franja_id}`;
+      if (seenTeoria.has(dk)) return;
+      seenTeoria.add(dk);
+      if (!byAsig[c.asig_codigo]) {
+        byAsig[c.asig_codigo] = {
+          nombre: c.asig_nombre,
+          weekNums: weeks.map(ww => ww.numero),
+          horasSem: new Array(weeks.length).fill(0)
+        };
+      }
+      byAsig[c.asig_codigo].horasSem[wi] += 2;
+    });
+  });
+
+  Object.values(byAsig).forEach(a => {
+    let acc = 0;
+    a.horasAcum = a.horasSem.map(h => { acc += h; return acc; });
+  });
+
+  return byAsig;
+}
+
+/**
+ * Genera un SVG comparando horas de teoría acumuladas de varios grupos para UNA asignatura.
+ * series: [{ label, vals:[acum…], color }]
+ * weekNums: [1, 2, …]
+ */
+function buildTeoriaAsigSVG(weekNums, series) {
+  const W = 320, H = 170;
+  const ML = 34, MT = 12, MR = 14, MB = 26;
+  const PW = W - ML - MR;
+  const PH = H - MT - MB;
+  const nW = weekNums.length;
+
+  const allVals = series.flatMap(s => s.vals);
+  const rawMax  = Math.max(1, ...allVals);
+  const yStep   = rawMax <= 10 ? 2 : rawMax <= 30 ? 5 : rawMax <= 60 ? 10 : rawMax <= 120 ? 20 : 25;
+  const yTicks  = [];
+  for (let y = 0; y <= rawMax + yStep; y += yStep) yTicks.push(y);
+  const yMax = yTicks[yTicks.length - 1];
+
+  function xPos(i) { return ML + (i / Math.max(nW - 1, 1)) * PW; }
+  function yPos(v) { return MT + PH - (v / yMax) * PH; }
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="font-family:sans-serif">`;
+
+  yTicks.forEach(y => {
+    const yp = yPos(y);
+    svg += `<line x1="${ML}" y1="${yp}" x2="${W-MR}" y2="${yp}" stroke="#e2e8f0" stroke-width="1"/>`;
+    svg += `<text x="${ML-4}" y="${yp+3.5}" text-anchor="end" font-size="9" fill="#888">${y}h</text>`;
+  });
+
+  const xEvery = nW <= 10 ? 1 : nW <= 16 ? 2 : 3;
+  weekNums.forEach((wn, i) => {
+    const xp = xPos(i);
+    if (i % xEvery === 0 || i === nW - 1) {
+      svg += `<line x1="${xp}" y1="${MT}" x2="${xp}" y2="${MT+PH}" stroke="#e8edf5" stroke-width="1"/>`;
+      svg += `<text x="${xp}" y="${H - MB + 10}" text-anchor="middle" font-size="9" fill="#888">S${wn}</text>`;
+    }
+  });
+
+  svg += `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT+PH}" stroke="#94a3b8" stroke-width="1.5"/>`;
+  svg += `<line x1="${ML}" y1="${MT+PH}" x2="${W-MR}" y2="${MT+PH}" stroke="#94a3b8" stroke-width="1.5"/>`;
+
+  series.forEach(s => {
+    const pts = s.vals.map((v, i) => `${xPos(i)},${yPos(v)}`).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.2"
+      stroke-linejoin="round" stroke-linecap="round"/>`;
+    s.vals.forEach((v, i) => {
+      if (i === 0 || s.vals[i-1] !== v || i === s.vals.length - 1) {
+        svg += `<circle cx="${xPos(i)}" cy="${yPos(v)}" r="2.8" fill="${s.color}" stroke="#fff" stroke-width="1"/>`;
+      }
+    });
+  });
+
+  svg += `<text x="8" y="${MT + PH/2}" text-anchor="middle" font-size="9" fill="#64748b"
+    transform="rotate(-90,8,${MT + PH/2})">h acum.</text>`;
+  svg += `</svg>`;
+  return svg;
+}
+
+/**
+ * Genera la sección HTML con un gráfico por asignatura comparando horas de teoría entre grupos.
+ * Solo se muestra si hay 2 o más grupos con teoría en el curso/cuatrimestre activo.
+ */
+function buildTeoriaComparativaSection() {
+  const prefix    = currentCurso + '_' + currentCuat + '_grupo_';
+  const groupKeys = Object.keys(DB.grupos).filter(k => k.startsWith(prefix)).sort();
+  if (groupKeys.length < 2) return '';
+
+  const TEORIA_COLORS = ['#2d5faa','#e74c3c','#27ae60','#f39c12','#8e44ad','#16a085'];
+
+  const groupStats = groupKeys.map((gKey, gi) => {
+    const g = DB.grupos[gKey];
+    return {
+      label:   'Grupo ' + g.grupo,
+      color:   TEORIA_COLORS[gi % TEORIA_COLORS.length],
+      byAsig:  computeTeoriaAcumuladaPorAsig(g.semanas),
+      weekNums: g.semanas.map(w => w.numero)
+    };
+  });
+
+  const allCods = [...new Set(groupStats.flatMap(g => Object.keys(g.byAsig)))].sort((a, b) => {
+    const nameA = (groupStats.find(g => g.byAsig[a])?.byAsig[a]?.nombre) || a;
+    const nameB = (groupStats.find(g => g.byAsig[b])?.byAsig[b]?.nombre) || b;
+    return nameA.localeCompare(nameB);
+  });
+
+  if (allCods.length === 0) return '';
+
+  let cardsHtml = '';
+  allCods.forEach(cod => {
+    const refGroup = groupStats.find(g => g.byAsig[cod]) || groupStats[0];
+    const weekNums = refGroup.byAsig[cod]?.weekNums || refGroup.weekNums;
+    const nombre   = refGroup.byAsig[cod]?.nombre || cod;
+
+    const series = groupStats.map(g => ({
+      label: g.label,
+      color: g.color,
+      vals:  g.byAsig[cod] ? g.byAsig[cod].horasAcum : new Array(weekNums.length).fill(0)
+    }));
+
+    const finalVals = series.map(s => s.vals[s.vals.length - 1]);
+    const maxDiff   = Math.max(...finalVals) - Math.min(...finalVals);
+    const badgeHtml = maxDiff === 0
+      ? `<span style="background:#dcfce7;color:#166534;font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:8px;margin-left:6px">&#10003;</span>`
+      : `<span style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:8px;margin-left:6px">+${maxDiff}h</span>`;
+
+    const svg = buildTeoriaAsigSVG(weekNums, series);
+
+    const legendHtml = series.map(s =>
+      `<span class="evol-legend-item"><span class="evol-legend-line" style="background:${s.color}"></span>${s.label} <strong>${s.vals[s.vals.length - 1]}h</strong></span>`
+    ).join('');
+
+    cardsHtml += `<div class="evol-card">
+      <div class="evol-card-header">${nombre} ${badgeHtml}<span style="color:#94a3b8;font-size:.68rem;margin-left:6px">[${cod}]</span></div>
+      <div class="evol-card-body">${svg}</div>
+      <div class="evol-legend">${legendHtml}</div>
+    </div>`;
+  });
+
+  return `<div class="evol-section">
+    <div class="evol-section-title">&#128218; Evoluci\u00f3n de teor\u00eda por asignatura \u2014 comparativa grupos</div>
+    <div class="evol-grid">${cardsHtml}</div>
+  </div>`;
+}
+
+
 /**
  * Construye y renderiza la sección completa de gráficos de evolución.
  */
@@ -2671,7 +2834,7 @@ function renderEvolucionSection() {
     html += `</div></div>`;
   });
 
-  container.innerHTML = html || '';
+  container.innerHTML = buildTeoriaComparativaSection() + (html || '');
 }
 
 // ─── ESTADÍSTICAS ─────────────────────────────────────────────────────────────
