@@ -3276,13 +3276,18 @@ function _getMirrorWeekByNum(weekNum, mirrorKey) {
  */
 function _mirrorSlotStatus(weekNum, dia, franjaId, mirrorKey) {
   const mirrorWeek = _getMirrorWeekByNum(weekNum, mirrorKey);
-  if (!mirrorWeek) return { free: true, ocupadaPor: null };  // semana no existe = libre
+  if (!mirrorWeek) return { free: true, ocupadaPor: null, ocupadaCodigo: null, isDesdoble: false };  // semana no existe = libre
   const ocupadas = (mirrorWeek.clases || []).filter(
     c => c.dia === dia && c.franja_id === franjaId
   );
-  if (ocupadas.length === 0) return { free: true, ocupadaPor: null };
+  if (ocupadas.length === 0) return { free: true, ocupadaPor: null, ocupadaCodigo: null, isDesdoble: false };
   const nombre = ocupadas[0].asig_nombre || ocupadas[0].contenido || '(clase sin nombre)';
-  return { free: false, ocupadaPor: nombre };
+  return {
+    free: false,
+    ocupadaPor:    nombre,
+    ocupadaCodigo: ocupadas[0].asig_codigo || null,
+    isDesdoble:    ocupadas.length > 1
+  };
 }
 
 // ─── DRAG & DROP — CLASES ────────────────────────────────────────────────────
@@ -3354,11 +3359,26 @@ async function dropClase(event, dia, franjaId) {
     const weekNum       = week.numero;
     const mirrorDestino = _mirrorSlotStatus(weekNum, dia, franjaId, activeMirrorKey);
     if (!mirrorDestino.free) {
-      showToast(
-        `⛔ No se puede mover: el destino [${dia} franja ${franjaId}] está ocupado en Grupo ${sibNum} por "${mirrorDestino.ocupadaPor}"`,
-        true
-      );
-      return;
+      // Bloquear si es desdoble: el servidor no permite swap con desdobles
+      if (mirrorDestino.isDesdoble) {
+        showToast(
+          `⛔ No se puede mover: el destino [${dia} franja ${franjaId}] es un desdoble en Grupo ${sibNum} (no se puede intercambiar)`,
+          true
+        );
+        return;
+      }
+      // Bloquear si la clase ocupante está excluida del espejo (no se puede sincronizar el swap)
+      const ocupanteExcluida = !mirrorDestino.ocupadaCodigo ||
+                                _mirrorExclusiones.has(mirrorDestino.ocupadaCodigo);
+      if (ocupanteExcluida) {
+        showToast(
+          `⛔ No se puede mover: el destino [${dia} franja ${franjaId}] está ocupado en Grupo ${sibNum} por "${mirrorDestino.ocupadaPor}" (excluida del espejo)`,
+          true
+        );
+        return;
+      }
+      // La ocupante no está excluida → swap doble permitido: ambos grupos intercambiarán
+      // sus clases simultáneamente. El servidor maneja el swap en cada grupo.
     }
 
     // 2. Buscar la clase equivalente en el grupo espejo (misma asignatura, mismo slot origen)
@@ -3385,7 +3405,7 @@ async function dropClase(event, dia, franjaId) {
       return;
     }
 
-    // 3. Todo OK: ejecutar los dos movimientos en paralelo
+    // 3. Todo OK: ejecutar los dos movimientos en paralelo (move o swap según ocupación)
     const [res1, res2] = await Promise.all([
       api('/api/clase/move', { id: claseId,       dia, franja_id: franjaId }),
       api('/api/clase/move', { id: mirrorClaseId, dia, franja_id: franjaId }),
@@ -3396,7 +3416,10 @@ async function dropClase(event, dia, franjaId) {
         true
       );
     } else {
-      showToast(`🔁 Clase movida en Grupo ${currentGroup} y Grupo ${sibNum}`);
+      const wasSwap = res1.swap || res2.swap;
+      showToast(wasSwap
+        ? `↕🔁 Clases intercambiadas en Grupo ${currentGroup} y Grupo ${sibNum}`
+        : `🔁 Clase movida en Grupo ${currentGroup} y Grupo ${sibNum}`);
     }
     await loadData();
     return;
@@ -3690,13 +3713,52 @@ async function saveSlot() {
     await _saveConjunto(newlyCheckedKeys, payload, editCtx, conjuntoId);
   }
 
+  // ── Modo espejo: replicar clase nueva al grupo hermano ───────────────────
+  let mirrorCreated = false;
+  if (editCtx.mode === 'add' && _mirrorMode && !noLec) {
+    const mirrorKey  = getMirrorSiblingKey();
+    const asigCodigo = asig ? asig.codigo : null;
+    if (mirrorKey && asigCodigo && !_mirrorExclusiones.has(asigCodigo)) {
+      const weekNum = editCtx.semana_numero;
+      const mGrupo  = DB.grupos[mirrorKey];
+      const mWeek   = mGrupo ? mGrupo.semanas.find(s => s.numero === weekNum) : null;
+      if (mWeek) {
+        const sibNum   = mirrorKey.split('_grupo_')[1] || '?';
+        const mDia     = payload.dia     || document.getElementById('fDia').value;
+        const mFranja  = payload.franja_id;
+        // Comprobar si el slot está libre en el espejo antes de replicar
+        const mStatus  = _mirrorSlotStatus(weekNum, mDia, mFranja, mirrorKey);
+        if (!mStatus.free && mStatus.isDesdoble) {
+          showToast(`⚠️ Clase creada en Grupo ${currentGroup}. No se replicó en Grupo ${sibNum}: la franja es un desdoble.`, true);
+        } else if (!mStatus.free) {
+          showToast(`⚠️ Clase creada en Grupo ${currentGroup}. La franja [${mDia}] ya estaba ocupada en Grupo ${sibNum} por "${mStatus.ocupadaPor}" — se sobreescribirá.`, false);
+          const mPayload = { ...payload, semana_id: mWeek.semana_id };
+          delete mPayload.conjunto_id;
+          const mRes = await api('/api/clase/create', mPayload);
+          if (mRes.error) showToast(`⛔ No se pudo replicar en Grupo ${sibNum}: ${mRes.error}`, true);
+          else mirrorCreated = true;
+        } else {
+          const mPayload = { ...payload, semana_id: mWeek.semana_id };
+          delete mPayload.conjunto_id;
+          const mRes = await api('/api/clase/create', mPayload);
+          if (mRes.error) showToast(`⚠️ Clase creada en Grupo ${currentGroup} pero no en Grupo ${sibNum}: ${mRes.error}`, true);
+          else mirrorCreated = true;
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   closeModal();
   await loadData();
 
   // Toast informativo
   const linkedUpdated = res.linked_updated || 0;
   let msg = 'Guardado en base de datos';
-  if (linkedUpdated > 0) {
+  if (mirrorCreated) {
+    const sibNum = (_mirrorGroupKey || '').split('_grupo_')[1] || '?';
+    msg += ` (🔁 replicado en Grupo ${sibNum})`;
+  } else if (linkedUpdated > 0) {
     msg += ` (propagado a ${linkedUpdated} grupo${linkedUpdated > 1 ? 's' : ''} vinculado${linkedUpdated > 1 ? 's' : ''})`;
   } else if (newlyCheckedKeys.length > 0) {
     msg += ` (+ ${newlyCheckedKeys.length} grupo${newlyCheckedKeys.length > 1 ? 's' : ''} vinculado${newlyCheckedKeys.length > 1 ? 's' : ''})`;
