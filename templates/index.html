@@ -186,6 +186,7 @@
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
     <div id="versionBadge" class="version-badge" title="Haz clic para ver el estado completo" onclick="toggleVersionDetail()" style="cursor:pointer"></div>
     <input type="file" id="importDBFile" accept=".db" style="display:none" onchange="importDBFileSelected(this)">
+    <button class="btn btn-outline btn-sm" id="btnReloadFichas" onclick="reloadFichas()" title="Recarga las fichas docentes (AF1-AF6) desde el CSV del grado sin modificar el horario">&#128257; Fichas</button>
     <button class="btn btn-outline btn-sm" id="btnImportDB" onclick="document.getElementById('importDBFile').click()" title="Sustituye la base de datos activa por un fichero .db seleccionado">&#128229; Importar</button>
     <button class="btn btn-success btn-sm" id="btnSaveDB" onclick="saveDB()" title="Fuerza WAL checkpoint y sobreescribe la base de datos activa">&#128424; Guardar</button>
     <button class="btn btn-outline btn-sm" id="btnBackupDB" onclick="backupDB()" title="Descarga una copia de la base de datos en la ubicación que elijas">&#128190; Guardar copia</button>

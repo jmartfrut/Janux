@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.35.0"
+APP_VERSION = "1.36.0"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1381,6 +1381,170 @@ def api_sinc_exclusion_toggle(data):
         conn.close()
 
 
+def api_reload_fichas(_data):
+    """POST /api/fichas/reload — recarga las fichas docentes desde el CSV del grado.
+    Lógica inlineada (compatible Python 3.8+). No toca la tabla 'clases'.
+    Devuelve { ok, updated, skipped, warnings, csv_used }"""
+    import csv as _csv, pathlib
+
+    # Usar CONFIG_PATH_OVERRIDE para la carpeta real del grado (DB_PATH puede
+    # apuntar a /tmp/ cuando el launcher copia la BD ahí al arrancar)
+    _cfg_ov = os.environ.get("CONFIG_PATH_OVERRIDE", "")
+    if _cfg_ov:
+        _cfg_ov = _cfg_ov.rstrip("/")
+        grado_dir = pathlib.Path(_cfg_ov if not _cfg_ov.endswith(".json") else _cfg_ov).parent \
+                    if _cfg_ov.endswith(".json") else pathlib.Path(_cfg_ov)
+    else:
+        grado_dir = pathlib.Path(DB_PATH).parent
+    siglas = CFG.get("degree", {}).get("acronym", "")
+
+    # Buscar CSV: primero en config/, luego en la carpeta real del grado
+    # El fichero local puede llamarse fichas_{siglas}.csv o asignaturas_{siglas}.csv
+    root_dir = pathlib.Path(SCRIPT_DIR)
+    candidates = [
+        root_dir / "config" / "fichas_{}.csv".format(siglas),
+        grado_dir / "fichas_{}.csv".format(siglas),
+        grado_dir / "asignaturas_{}.csv".format(siglas),
+        grado_dir / "fichas.csv",
+    ]
+    fichas_csv = None
+    for p in candidates:
+        if p.exists():
+            fichas_csv = p
+            break
+    if fichas_csv is None:
+        return {"ok": False, "error": "No se encontró el CSV de fichas para '{}'".format(siglas)}
+
+    # Parsear CSV
+    rows = []
+    with open(str(fichas_csv), newline="", encoding="utf-8") as f:
+        reader = _csv.DictReader(f)
+        for row in reader:
+            codigo = (row.get("codigo") or "").strip()
+            if not codigo:
+                continue
+
+            def _num(key, _row=row):
+                val = (_row.get(key) or "").strip()
+                try:
+                    return int(float(val))
+                except (ValueError, TypeError):
+                    return 0
+
+            def _flt(key, _row=row):
+                val = (_row.get(key) or "").strip()
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return 0.0
+
+            cuat_raw = (row.get("cuatrimestre") or "").strip().upper()
+            cuat = cuat_raw if cuat_raw in ("1C", "2C", "A") else None
+            rows.append({
+                "codigo":       codigo,
+                "nombre":       (row.get("nombre") or "").strip(),
+                "cuatrimestre": cuat,
+                "creditos":     _flt("creditos"),
+                "af1": _num("af1"), "af2": _num("af2"), "af3": _num("af3"),
+                "af4": _num("af4"), "af5": _num("af5"), "af6": _num("af6"),
+            })
+
+    conn = get_db()
+    warnings = []
+    updated = 0
+    skipped = 0
+    try:
+        # Asegurar columna cuatrimestre (por si hay BDs antiguas sin migración)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(fichas)").fetchall()}
+        if "cuatrimestre" not in cols:
+            conn.execute("ALTER TABLE fichas ADD COLUMN cuatrimestre TEXT DEFAULT NULL")
+
+        asig_map = {
+            r[0]: r[1]
+            for r in conn.execute("SELECT codigo, id FROM asignaturas").fetchall()
+        }
+        for r in rows:
+            asig_id = asig_map.get(r["codigo"])
+            if asig_id is None:
+                warnings.append(f"Código '{r['codigo']}' ({r['nombre']}) no encontrado en BD")
+                skipped += 1
+                continue
+            conn.execute("""
+                UPDATE fichas
+                SET creditos=?, af1=?, af2=?, af3=?, af4=?, af5=?, af6=?, cuatrimestre=?
+                WHERE asignatura_id=?
+            """, (
+                r["creditos"], r["af1"], r["af2"], r["af3"],
+                r["af4"],      r["af5"], r["af6"], r["cuatrimestre"],
+                asig_id
+            ))
+            updated += 1
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(FULL)")
+    finally:
+        conn.close()
+
+    # Aplicar los mismos cambios directamente a la BD origen (horarios/GIDI/horarios.db).
+    # Cuando el servidor trabaja sobre una copia en /tmp/ (DB_PATH_OVERRIDE del launcher),
+    # el checkpoint del WAL puede no ser suficiente para persistir los cambios si hay
+    # otras conexiones abiertas. Actualizar la BD origen garantiza que los cambios
+    # sobrevivan al reinicio independientemente del WAL.
+    import sqlite3 as _sqlite3
+    db_backup = os.environ.get("DB_BACKUP_TARGET", "")
+    db_name   = CFG.get("server", {}).get("db_name", "horarios.db")
+    src_db    = db_backup or str(grado_dir / db_name)
+    if src_db and src_db != DB_PATH and pathlib.Path(src_db).exists():
+        try:
+            src_conn = _sqlite3.connect(src_db)
+            asig_map_src = {
+                r[0]: r[1]
+                for r in src_conn.execute("SELECT codigo, id FROM asignaturas").fetchall()
+            }
+            for r in rows:
+                asig_id = asig_map_src.get(r["codigo"])
+                if asig_id is None:
+                    continue
+                src_conn.execute("""
+                    UPDATE fichas
+                    SET creditos=?, af1=?, af2=?, af3=?, af4=?, af5=?, af6=?, cuatrimestre=?
+                    WHERE asignatura_id=?
+                """, (
+                    r["creditos"], r["af1"], r["af2"], r["af3"],
+                    r["af4"],      r["af5"], r["af6"], r["cuatrimestre"],
+                    asig_id
+                ))
+            src_conn.commit()
+            src_conn.execute("PRAGMA wal_checkpoint(FULL)")
+        except Exception:
+            pass
+        finally:
+            src_conn.close()
+
+    # Si el CSV usado era el de config/, sincronizar la copia local del grado.
+    # El fichero local puede llamarse asignaturas_{siglas}.csv (grados creados con
+    # nuevo_grado.py) o fichas_{siglas}.csv (convención antigua). Se respeta el nombre
+    # que ya exista; si ninguno existe aún, se crea fichas_{siglas}.csv.
+    import shutil as _shutil
+    local_candidates = [
+        grado_dir / "asignaturas_{}.csv".format(siglas),
+        grado_dir / "fichas_{}.csv".format(siglas),
+    ]
+    local_csv = next((p for p in local_candidates if p.exists()), local_candidates[1])
+    csv_synced = False
+    if fichas_csv.resolve() != local_csv.resolve():
+        _shutil.copy2(str(fichas_csv), str(local_csv))
+        csv_synced = True
+
+    return {
+        "ok":        True,
+        "updated":   updated,
+        "skipped":   skipped,
+        "warnings":  warnings,
+        "csv_used":  str(fichas_csv),
+        "csv_synced": csv_synced,
+    }
+
+
 # ─── ROUTE MAP ───
 
 API_ROUTES = {
@@ -1410,6 +1574,7 @@ API_ROUTES = {
     "/api/comentario/set":           ("POST", api_set_comentario),
     "/api/sinc/config":              ("GET",  api_get_sinc_config),
     "/api/sinc/exclusion/toggle":    ("POST", api_sinc_exclusion_toggle),
+    "/api/fichas/reload":            ("POST", api_reload_fichas),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero

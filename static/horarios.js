@@ -111,6 +111,32 @@ async function api(path, body) {
   return res.json().catch(() => ({ error: `Error del servidor (HTTP ${res.status})` }));
 }
 
+async function reloadFichas() {
+  const btn = document.getElementById('btnReloadFichas');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#9203; Recargando...';
+  try {
+    const res = await api('/api/fichas/reload', {});
+    if (res.ok) {
+      btn.innerHTML = '&#10003; Listo';
+      btn.style.background = 'rgba(39,174,96,.4)';
+      let msg = `Fichas actualizadas: ${res.updated}`;
+      if (res.skipped > 0) msg += ` (${res.skipped} omitidas)`;
+      showToast(msg);
+      await loadData();
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+    } else {
+      throw new Error(res.error || 'Error desconocido');
+    }
+  } catch(e) {
+    btn.innerHTML = '&#10007; Error';
+    btn.style.background = 'rgba(231,76,60,.25)';
+    showToast('Error al recargar fichas: ' + e.message, true);
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 3000);
+  }
+}
+
 async function saveDB() {
   const btn = document.getElementById('btnSaveDB');
   const orig = btn.innerHTML;
