@@ -3417,11 +3417,16 @@ async function dropClase(event, dia, franjaId) {
     const mirrorWeek = _getMirrorWeekByNum(weekNum, activeMirrorKey);
     let mirrorClaseId = null;
     if (mirrorWeek && origenCls) {
-      const espejo = (mirrorWeek.clases || []).find(
+      // En desdoble, preferir la clase del mismo subgrupo (para no mover la hermana)
+      const origenSubgrupo = origenCls.subgrupo || '';
+      const slotEspejo = (mirrorWeek.clases || []).filter(
         c => c.asig_codigo === asigCodigo &&
              c.dia        === origenCls.dia &&
              c.franja_id  === origenCls.franja_id
       );
+      const espejo = slotEspejo.find(c => (c.subgrupo || '') === origenSubgrupo)
+                  || slotEspejo[0]
+                  || null;
       mirrorClaseId = espejo ? espejo.id : null;
     }
 
@@ -3969,6 +3974,10 @@ async function deleteSlot() {
     }
   }
 
+  // Capturar datos de la clase ANTES de eliminar (para localizar su espejo después)
+  const weekForDelete = getCurrentWeek();
+  const clsToDelete   = weekForDelete ? weekForDelete.clases.find(c => c.id === editCtx.claseId) : null;
+
   // Eliminar la clase actual (con o sin borrado conjunto vía conjunto_id)
   await api('/api/clase/delete', { id: editCtx.claseId, delete_conjunto: deleteConjunto });
 
@@ -3979,9 +3988,47 @@ async function deleteSlot() {
     }
   }
 
+  // ── Modo espejo: propagar BORRADO al grupo hermano ────────────────────────
+  // Solo si la clase no era EXP/EXF vinculada (esas ya se gestionan con conjunto_id)
+  let mirrorDeleted = false;
+  if (_mirrorMode && clsToDelete && clsToDelete.asig_codigo && !deleteConjunto) {
+    const mirrorKey  = getMirrorSiblingKey();
+    const asigCodigo = clsToDelete.asig_codigo;
+    if (mirrorKey && !_mirrorExclusiones.has(asigCodigo)) {
+      const weekNum  = editCtx.semana_numero;
+      const mGrupo   = DB.grupos[mirrorKey];
+      const mWeek    = mGrupo ? mGrupo.semanas.find(s => s.numero === weekNum) : null;
+      if (mWeek) {
+        const origSubgrupo = clsToDelete.subgrupo || '';
+        const slotClases   = (mWeek.clases || []).filter(
+          c => c.dia === editCtx.dia && c.franja_id === editCtx.franja_id && !c.es_no_lectivo
+        );
+        let mirrorCls = null;
+        if (slotClases.length === 1) {
+          mirrorCls = slotClases[0];
+        } else if (slotClases.length > 1) {
+          // Desdoble: buscar por subgrupo + código, luego por subgrupo, luego por código
+          mirrorCls = slotClases.find(c => (c.subgrupo || '') === origSubgrupo && c.asig_codigo === asigCodigo)
+                   || slotClases.find(c => (c.subgrupo || '') === origSubgrupo)
+                   || slotClases.find(c => c.asig_codigo === asigCodigo);
+        }
+        if (mirrorCls) {
+          const mRes = await api('/api/clase/delete', { id: mirrorCls.id });
+          if (!mRes.error) mirrorDeleted = true;
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   closeModal();
   await loadData();
-  showToast(deleteConjunto ? 'Eliminado de todos los grupos vinculados' : 'Eliminado de base de datos');
+  let delMsg = deleteConjunto ? 'Eliminado de todos los grupos vinculados' : 'Eliminado de base de datos';
+  if (mirrorDeleted) {
+    const sibNum = (_mirrorGroupKey || '').split('_grupo_')[1] || '?';
+    delMsg += ` (🔁 eliminado en Grupo ${sibNum})`;
+  }
+  showToast(delMsg);
 }
 
 function getPrintInfo() {
