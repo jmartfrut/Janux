@@ -2962,10 +2962,16 @@ function renderStats() {
 
 // ─── NAVIGATION ───
 function onFilterChange() {
-  currentCurso = document.getElementById('cursoSelect').value;
-  currentCuat = document.getElementById('cuatSelect').value;
+  const newCurso = document.getElementById('cursoSelect').value;
+  const newCuat  = document.getElementById('cuatSelect').value;
   currentGroup = document.getElementById('grupoSelect').value;
-  currentWeekIdx = 0;
+  // Solo resetear la semana si cambia el curso o el cuatrimestre,
+  // no si el usuario solo cambia de grupo (para mantener la semana activa).
+  if (newCurso !== currentCurso || newCuat !== currentCuat) {
+    currentWeekIdx = 0;
+  }
+  currentCurso = newCurso;
+  currentCuat  = newCuat;
   _resetSabadoToggle();
   updateGrupoOptions();
   updateHeaderSubtitle();
@@ -3775,6 +3781,48 @@ async function saveSlot() {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Modo espejo: propagar EDICIÓN al grupo hermano ───────────────────────
+  let mirrorUpdated = false;
+  if (editCtx.mode === 'edit' && _mirrorMode && !noLec) {
+    const mirrorKey  = getMirrorSiblingKey();
+    const asigCodigo = asig ? asig.codigo : null;
+    if (mirrorKey && asigCodigo && !_mirrorExclusiones.has(asigCodigo)) {
+      const weekNum  = editCtx.semana_numero;
+      const mGrupo   = DB.grupos[mirrorKey];
+      const mWeek    = mGrupo ? mGrupo.semanas.find(s => s.numero === weekNum) : null;
+      if (mWeek) {
+        // Recuperar datos originales de la clase (antes de editar) para localizar la
+        // clase equivalente en el espejo, especialmente en casos de desdoble.
+        const curKey     = currentCurso + '_' + currentCuat + '_grupo_' + currentGroup;
+        const curWeek    = DB.grupos[curKey]?.semanas.find(s => s.numero === weekNum);
+        const origCls    = curWeek?.clases.find(c => c.id === editCtx.claseId);
+        const origSubgrupo = origCls ? origCls.subgrupo : payload.subgrupo;
+        const origCodigo   = origCls ? origCls.asig_codigo : asigCodigo;
+
+        // Buscar la clase equivalente en el espejo: mismo día + franja
+        const slotClases = (mWeek.clases || []).filter(
+          c => c.dia === editCtx.dia && c.franja_id === editCtx.franja_id && !c.es_no_lectivo
+        );
+        let mirrorCls = null;
+        if (slotClases.length === 1) {
+          mirrorCls = slotClases[0];
+        } else if (slotClases.length > 1) {
+          // Desdoble: buscar primero por subgrupo + código, luego por subgrupo, luego por código
+          mirrorCls = slotClases.find(c => c.subgrupo === origSubgrupo && c.asig_codigo === origCodigo)
+                   || slotClases.find(c => c.subgrupo === origSubgrupo)
+                   || slotClases.find(c => c.asig_codigo === origCodigo);
+        }
+        if (mirrorCls) {
+          const sibNum = mirrorKey.split('_grupo_')[1] || '?';
+          const mRes = await api('/api/clase/update', { ...payload, id: mirrorCls.id });
+          if (mRes.error) showToast(`⛔ No se pudo actualizar en Grupo ${sibNum}: ${mRes.error}`, true);
+          else mirrorUpdated = true;
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   closeModal();
   await loadData();
 
@@ -3784,6 +3832,9 @@ async function saveSlot() {
   if (mirrorCreated) {
     const sibNum = (_mirrorGroupKey || '').split('_grupo_')[1] || '?';
     msg += ` (🔁 replicado en Grupo ${sibNum})`;
+  } else if (mirrorUpdated) {
+    const sibNum = (_mirrorGroupKey || '').split('_grupo_')[1] || '?';
+    msg += ` (🔁 actualizado en Grupo ${sibNum})`;
   } else if (linkedUpdated > 0) {
     msg += ` (propagado a ${linkedUpdated} grupo${linkedUpdated > 1 ? 's' : ''} vinculado${linkedUpdated > 1 ? 's' : ''})`;
   } else if (newlyCheckedKeys.length > 0) {
