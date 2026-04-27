@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.36.2"
+APP_VERSION = "1.36.3"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1440,9 +1440,15 @@ def api_reload_fichas(_data):
 
             cuat_raw = (row.get("cuatrimestre") or "").strip().upper()
             cuat = cuat_raw if cuat_raw in ("1C", "2C", "A") else None
+            curso_raw = (row.get("curso") or "").strip()
+            try:
+                curso_val = int(curso_raw) if curso_raw else None
+            except (ValueError, TypeError):
+                curso_val = None
             rows.append({
                 "codigo":       codigo,
                 "nombre":       (row.get("nombre") or "").strip(),
+                "curso":        curso_val,
                 "cuatrimestre": cuat,
                 "creditos":     _flt("creditos"),
                 "af1": _num("af1"), "af2": _num("af2"), "af3": _num("af3"),
@@ -1478,6 +1484,10 @@ def api_reload_fichas(_data):
                 r["af4"],      r["af5"], r["af6"], r["cuatrimestre"],
                 asig_id
             ))
+            if r["nombre"]:
+                conn.execute("""
+                    UPDATE asignaturas SET nombre=?, curso=?, cuatrimestre=? WHERE id=?
+                """, (r["nombre"], r["curso"], r["cuatrimestre"], asig_id))
             updated += 1
         conn.commit()
         conn.execute("PRAGMA wal_checkpoint(FULL)")
@@ -1513,6 +1523,10 @@ def api_reload_fichas(_data):
                     r["af4"],      r["af5"], r["af6"], r["cuatrimestre"],
                     asig_id
                 ))
+                if r["nombre"]:
+                    src_conn.execute("""
+                        UPDATE asignaturas SET nombre=?, curso=?, cuatrimestre=? WHERE id=?
+                    """, (r["nombre"], r["curso"], r["cuatrimestre"], asig_id))
             src_conn.commit()
             src_conn.execute("PRAGMA wal_checkpoint(FULL)")
         except Exception:
