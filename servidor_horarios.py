@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.36.8"
+APP_VERSION = "1.37.0"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -68,6 +68,12 @@ CURSO_LABEL = os.environ.get("CURSO_LABEL") or _cfg("server", "curso_label", def
 # Ruta original de la BD cuando se trabaja con copia temporal (Windows).
 # Si está definida, el manejador Win32 copia DB_PATH → DB_BACKUP_TARGET al cerrar.
 DB_BACKUP_TARGET = os.environ.get("DB_BACKUP_TARGET", "")
+
+# Ruta relativa al directorio del grado activo (para sync_dtie.py)
+GRADO_DIR_REL = os.path.relpath(os.path.dirname(_cfg_path), SCRIPT_DIR)
+
+# True si el grado activo es un Doble Grado DTIE
+IS_DTIE = bool(CFG.get("dtie"))
 
 # Branding (colores CSS)
 COLOR_PRIMARY       = _cfg("branding", "primary",       default="#1a3a6b")
@@ -1559,6 +1565,33 @@ def api_reload_fichas(_data):
     }
 
 
+def api_dtie_sync(_data):
+    """POST /api/dtie/sync — ejecuta sync_dtie.py sobre el DTIE activo y devuelve
+    el log completo. Solo disponible si el grado tiene 'dtie: true' en config.json."""
+    if not IS_DTIE:
+        return {"ok": False, "error": "Este grado no es un DTIE."}
+
+    import subprocess as _sp
+    sync_script = os.path.join(SCRIPT_DIR, "tools", "sync_dtie.py")
+
+    # Usar siempre la ruta del directorio del grado (relativa a SCRIPT_DIR)
+    # sync_dtie.py acepta una ruta relativa desde la raíz del proyecto.
+    try:
+        result = _sp.run(
+            [sys.executable, sync_script, GRADO_DIR_REL],
+            capture_output=True, text=True, timeout=180, cwd=SCRIPT_DIR
+        )
+        output = result.stdout
+        if result.stderr.strip():
+            output += "\n--- stderr ---\n" + result.stderr
+        ok = result.returncode == 0
+        return {"ok": ok, "output": output, "lines": output.splitlines()}
+    except _sp.TimeoutExpired:
+        return {"ok": False, "error": "Tiempo de espera agotado (>180 s).", "lines": []}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "lines": []}
+
+
 # ─── ROUTE MAP ───
 
 API_ROUTES = {
@@ -1589,6 +1622,7 @@ API_ROUTES = {
     "/api/sinc/config":              ("GET",  api_get_sinc_config),
     "/api/sinc/exclusion/toggle":    ("POST", api_sinc_exclusion_toggle),
     "/api/fichas/reload":            ("POST", api_reload_fichas),
+    "/api/dtie/sync":                ("POST", api_dtie_sync),
 }
 
 TEMPLATE_PATH = None  # Plantilla no requerida; el Excel se genera desde cero
@@ -2200,6 +2234,7 @@ def generate_html():
         CURSO_OPTIONS           = CURSO_OPTIONS,
         NUM_CURSOS              = _num_cursos,
         APP_VERSION             = APP_VERSION,
+        IS_DTIE                 = IS_DTIE,
     )
     return _html_cache
 

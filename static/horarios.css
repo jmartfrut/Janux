@@ -28,6 +28,7 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .btn-success{background:var(--success);color:#fff} .btn-success:hover{background:#219a52}
 .btn-danger{background:var(--danger);color:#fff}
 .btn-outline{background:#fff;color:var(--primary);border:1.5px solid var(--primary)} .btn-outline:hover{background:var(--hover)}
+.btn-dtie-sync{background:#0e7490;color:#fff;border:none} .btn-dtie-sync:hover{background:#0c6680} .btn-dtie-sync:disabled{opacity:.65;cursor:not-allowed}
 .btn-sm{padding:4px 10px;font-size:.78rem}
 .view-tabs{display:flex;gap:0;background:var(--bg);border-radius:8px;padding:3px}
 .tab-btn{padding:6px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.82rem;font-weight:600;background:transparent;color:var(--text-light);transition:all .2s}

@@ -111,6 +111,69 @@ async function api(path, body) {
   return res.json().catch(() => ({ error: `Error del servidor (HTTP ${res.status})` }));
 }
 
+
+// ── Sincronización DTIE ──────────────────────────────────────────────────────
+function openSyncModal() {
+  const m = document.getElementById('syncDtieModal');
+  if (m) { m.style.display = 'flex'; }
+}
+function closeSyncModal() {
+  const m = document.getElementById('syncDtieModal');
+  if (m) { m.style.display = 'none'; }
+}
+
+async function syncDtie() {
+  const btn = document.getElementById('btnSyncDtie');
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#9203; Sincronizando...';
+
+  // Limpiar y abrir modal
+  const log = document.getElementById('syncDtieLog');
+  if (log) { log.innerHTML = '⏳  Ejecutando sync_dtie.py…\n'; }
+  openSyncModal();
+
+  try {
+    const res = await api('/api/dtie/sync', {});
+
+    // Renderizar líneas con colores según emoji/prefijo
+    const lines = res.lines || (res.output ? res.output.split('\n') : []);
+    if (log) {
+      log.innerHTML = lines.map(l => {
+        let color = '';
+        if (l.includes('✅') || l.includes('Sincronización completada correctamente')) color = '#166534';
+        else if (l.includes('⚠️') || l.includes('conflicto')) color = '#92400e';
+        else if (l.includes('❌') || (res.error && l === lines[0])) color = '#991b1b';
+        else if (l.startsWith('──') || l.startsWith('🔄')) color = '#1e3a8a';
+        const span = color ? `<span style="color:${color}">${escHtml(l)}</span>` : escHtml(l);
+        return span;
+      }).join('\n');
+      log.scrollTop = log.scrollHeight;
+    }
+
+    if (res.ok) {
+      btn.innerHTML = '&#10003; Listo';
+      btn.style.background = 'rgba(39,174,96,.4)';
+      showToast('Sincronización DTIE completada');
+      await loadData();
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 4000);
+    } else {
+      throw new Error(res.error || (lines.find(l => l.includes('❌')) || 'Error en la sincronización'));
+    }
+  } catch(e) {
+    btn.innerHTML = '&#10007; Error';
+    btn.style.background = 'rgba(231,76,60,.25)';
+    showToast('Error al sincronizar DTIE: ' + e.message, true);
+    if (log) { log.innerHTML += '\n❌  ' + escHtml(e.message); }
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.disabled = false; }, 4000);
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 async function reloadFichas() {
   const btn = document.getElementById('btnReloadFichas');
   const orig = btn.innerHTML;

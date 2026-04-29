@@ -186,6 +186,9 @@
     <div class="db-badge"><span>&#9679;</span> SQLite conectado</div>
     <div id="versionBadge" class="version-badge" title="Haz clic para ver el estado completo" onclick="toggleVersionDetail()" style="cursor:pointer"></div>
     <input type="file" id="importDBFile" accept=".db" style="display:none" onchange="importDBFileSelected(this)">
+    {% if IS_DTIE %}
+    <button class="btn btn-dtie-sync btn-sm" id="btnSyncDtie" onclick="syncDtie()" title="Re-sincroniza el horario del DTIE desde los grados de origen (GIM / GIDI)">&#128257; Sincronizar DTIE</button>
+    {% endif %}
     <button class="btn btn-outline btn-sm" id="btnReloadFichas" onclick="reloadFichas()" title="Recarga las fichas docentes (AF1-AF6) desde el CSV del grado sin modificar el horario">&#128257; Fichas</button>
     <button class="btn btn-outline btn-sm" id="btnImportDB" onclick="document.getElementById('importDBFile').click()" title="Sustituye la base de datos activa por un fichero .db seleccionado">&#128229; Importar</button>
     <button class="btn btn-success btn-sm" id="btnSaveDB" onclick="saveDB()" title="Fuerza WAL checkpoint y sobreescribe la base de datos activa">&#128424; Guardar</button>
@@ -447,5 +450,23 @@ const NUM_CURSOS          = {{ NUM_CURSOS }};
   &copy; <span id="footer-year"></span> Jes&uacute;s Mart&iacute;nez-Frutos &mdash; {{ DEGREE_ACRONYM }} &middot; {{ INSTITUTION_ACRONYM }}
   <script>document.getElementById('footer-year').textContent = new Date().getFullYear();</script>
 </footer>
+
+<!-- Modal de sincronización DTIE -->
+<div id="syncDtieModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
+     z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:min(680px,92vw);max-height:80vh;
+              display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:16px 20px;border-bottom:1px solid #e5e7eb">
+      <strong style="font-size:1.05rem">&#128257; Sincronización DTIE</strong>
+      <button onclick="closeSyncModal()" style="background:none;border:none;font-size:1.4rem;
+              cursor:pointer;color:#666;line-height:1">&times;</button>
+    </div>
+    <pre id="syncDtieLog" style="flex:1;overflow:auto;margin:0;padding:16px 20px;
+         font-size:.82rem;line-height:1.55;white-space:pre-wrap;background:#f8fafc;
+         border-radius:0 0 12px 12px;color:#1e293b"></pre>
+  </div>
+</div>
+
 </body>
 </html>
