@@ -1138,6 +1138,116 @@ loadGrados();
 # BACKEND — FUNCIONES DE DATOS
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _clase_act_type(tipo, af_cat, tipo_to_af=None):
+    """Calcula el act_type de una clase a partir de (tipo, af_cat).
+
+    Réplica fiel de getActType() en static/horarios.js: ese JS es la única
+    fuente de verdad para clasificar una clase como 'teoria', 'lab', 'info',
+    'parcial5', 'parcial6' o 'af3'. Mantener ambos sincronizados.
+    """
+    t = (tipo or '').strip().upper()
+    if t == 'LAB': return 'lab'
+    if t == 'INF': return 'info'
+    if t == 'EXF': return 'parcial6'
+    if t == 'EXP':
+        return 'parcial6' if (af_cat or '') == 'AF6' else 'parcial5'
+    if t == 'CPA': return 'teoria'
+    if t == 'SEM': return 'af3'
+    if t and tipo_to_af:
+        af = tipo_to_af.get(t)
+        if af == 'AF2': return 'lab'
+        if af == 'AF4': return 'info'
+        if af == 'AF5' or af == 'AF6': return 'parcial'
+        if af == 'AF1': return 'teoria'
+        if af == 'AF3': return 'af3'
+    if t in ('AE', 'AEO', 'EPYOAE'):
+        return 'parcial'
+    return 'teoria'
+
+
+def _expand_subgrupos(sg):
+    """Expande un campo subgrupo de clases en lista: '1,2,3' o '1-4' o '2'.
+
+    Réplica de expandSubgrupos() en static/horarios.js. Valores no numéricos
+    (incluido 'todos' o '') se devuelven como [valor].
+    """
+    import re
+    s = (sg or '').strip()
+    m = re.fullmatch(r'(\d+)-(\d+)', s)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        return [str(i) for i in range(a, b + 1)]
+    if ',' in s:
+        return [x.strip() for x in s.split(',') if x.strip()]
+    return [s]
+
+
+def _load_marcas_destacadas(src_conn, codigo, grupo_num):
+    """Lee asignaturas_destacadas y devuelve dict[act_type] -> set(subgrupo).
+
+    Devuelve {} si la tabla no existe o si no hay marcas para (codigo, grupo_num).
+    """
+    has_table = bool(src_conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'"
+    ).fetchone())
+    if not has_table:
+        return {}
+    rows = src_conn.execute(
+        "SELECT act_type, subgrupo FROM asignaturas_destacadas "
+        "WHERE codigo = ? AND grupo_num = ?",
+        (codigo, grupo_num)
+    ).fetchall()
+    marcas = {}
+    for act, sg in rows:
+        marcas.setdefault(act or '', set()).add(sg or '')
+    return marcas
+
+
+def _clase_pasa_filtro(clase_tipo, clase_af_cat, clase_subgrupo, marcas, tipo_to_af=None):
+    """Determina si una clase debe copiarse al DTIE según las marcas ⭐.
+
+    `marcas` es dict[act_type] -> set(subgrupos). Reglas:
+      - Si la asignatura no tiene ninguna ⭐ (marcas vacío) → fuera.
+      - EXP/EXF (parciales y exámenes en horario) son eventos de grupo
+        completo: si la asignatura tiene alguna ⭐, se copian siempre
+        independientemente de qué act_type concreto esté marcado.
+      - Si act_type de la clase no está en marcas → fuera.
+      - Si 'todos' ∈ marcas[act_type] → entra.
+      - Si subgrupo de la clase está vacío y '' ∈ marcas[act_type] → entra.
+      - Si la intersección entre los subgrupos expandidos de la clase
+        y marcas[act_type] no es vacía → entra.
+    """
+    if not marcas:
+        return False
+    t_upper = (clase_tipo or '').strip().upper()
+    if t_upper in ('EXP', 'EXF'):
+        return True
+    act = _clase_act_type(clase_tipo, clase_af_cat, tipo_to_af)
+    sg_marcados = marcas.get(act)
+    if sg_marcados is None:
+        return False
+    if 'todos' in sg_marcados or 'Todos' in sg_marcados:
+        return True
+    sg_clase = (clase_subgrupo or '').strip()
+    if sg_clase == '' and '' in sg_marcados:
+        return True
+    expandidos = set(_expand_subgrupos(sg_clase))
+    return bool(expandidos & sg_marcados)
+
+
+def _load_tipo_to_af(db_path):
+    """Lee tipo_to_af del config.json del grado origen. Devuelve dict (vacío si falla)."""
+    try:
+        cfg_path = Path(db_path).parent / 'config.json'
+        if cfg_path.exists():
+            with open(cfg_path, encoding='utf-8') as f:
+                cfg = json.load(f)
+            return cfg.get('tipo_to_af', {}) or {}
+    except Exception:
+        pass
+    return {}
+
+
 def resolve_db_path(db_path_str):
     """Convierte una ruta relativa o absoluta a Path absoluta."""
     p = Path(db_path_str)
@@ -1272,7 +1382,13 @@ def api_leer_dtie(data):
                 g = find_main_grupo(asig['codigo'])
                 asig['_grupo_id_origen'] = g[0] if g else None
 
-        # Leer schedules comprimidos para conflict detection en el cliente
+        # Leer schedules comprimidos para conflict detection en el cliente.
+        # Solo se incluyen los slots cuya (act_type, subgrupo) está marcada con ⭐
+        # para que la detección de solapamientos en el wizard sea coherente con
+        # lo que realmente se copiará al DTIE (mismo criterio que generar_dtie_db).
+        # Las asignaturas sin ninguna ⭐ se devuelven con schedule vacío — la
+        # política DTIE es "asignaturas sin estrella no se incluyen".
+        _tipo_to_af_src = _load_tipo_to_af(db_path)
         schedules = {}
         for asig in asignaturas:
             codigo   = asig['codigo']
@@ -1280,14 +1396,35 @@ def api_leer_dtie(data):
             if not grupo_id:
                 schedules[codigo] = []
                 continue
+
+            _clave_row = conn.execute(
+                "SELECT clave FROM grupos WHERE id = ?", (grupo_id,)
+            ).fetchone()
+            if not _clave_row:
+                schedules[codigo] = []
+                continue
+            # grupo_num en asignaturas_destacadas almacena solo el número
+            # de grupo (ej. '1'), NO la clave completa ('1_2C_grupo_1').
+            _grupo_num = _clave_row[0].split('_grupo_')[-1]
+            _marcas = _load_marcas_destacadas(conn, codigo, _grupo_num)
+            if not _marcas:
+                # Sin estrellas para esta asignatura: no se copiará al DTIE.
+                schedules[codigo] = []
+                continue
+
             clases = conn.execute("""
-                SELECT s.numero AS sem, c.dia, c.franja_id AS fr, f.label AS fl
+                SELECT s.numero AS sem, c.dia, c.franja_id AS fr, f.label AS fl,
+                       c.tipo, c.af_cat, c.subgrupo
                 FROM clases c
                 JOIN semanas s ON s.id = c.semana_id
                 JOIN asignaturas a ON a.id = c.asignatura_id
                 JOIN franjas f ON f.id = c.franja_id
                 WHERE s.grupo_id = ? AND a.codigo = ? AND c.es_no_lectivo = 0
             """, (grupo_id, codigo)).fetchall()
+            clases = [
+                r for r in clases
+                if _clase_pasa_filtro(r[4], r[5], r[6], _marcas, _tipo_to_af_src)
+            ]
             schedules[codigo] = [{'sem': r[0], 'dia': r[1], 'fr': r[2], 'fl': r[3]} for r in clases]
 
         # Nombre del grado (para mostrar en preview)
@@ -1447,6 +1584,14 @@ def generar_dtie_db(dtie_conn, src_conns, distribucion, estructura, log):
     for i, src_conn in enumerate(src_conns):
         sf = src_conn.execute("SELECT id, orden FROM franjas").fetchall()
         franja_maps.append({sid: orden_to_new_id.get(orden, sid) for sid, orden in sf})
+
+    # tipo_to_af por fuente (necesario para clasificar tipos editables como
+    # AE, AEO, etc., al filtrar clases por las marcas ⭐ del paso 7).
+    _src_tipo_to_af_by_idx = []
+    for src_conn in src_conns:
+        _path_row = src_conn.execute("PRAGMA database_list").fetchone()
+        _src_db_path = _path_row[2] if _path_row and len(_path_row) >= 3 else ''
+        _src_tipo_to_af_by_idx.append(_load_tipo_to_af(_src_db_path) if _src_db_path else {})
 
     # 2. Determinar (curso, cuatrimestre) únicos del DTIE
     cuats_por_curso = {}
@@ -1660,32 +1805,45 @@ def generar_dtie_db(dtie_conn, src_conns, distribucion, estructura, log):
             src_grupo_id = best[0]
         franja_map   = franja_maps[fidx]
 
+        # Leemos también tipo y af_cat para poder calcular el act_type de cada
+        # clase y filtrar por (act_type, subgrupo) — no solo por subgrupo.
         clases = src_conn.execute("""
             SELECT c.dia, c.franja_id, c.aula, c.subgrupo, c.observacion,
-                   c.es_no_lectivo, c.contenido, s.numero
+                   c.es_no_lectivo, c.contenido, s.numero, c.tipo, c.af_cat
             FROM clases c
             JOIN semanas s ON s.id = c.semana_id
             WHERE s.grupo_id = ? AND c.asignatura_id = ?
         """, (src_grupo_id, src_asig_id)).fetchall()
 
-        # Filtrar subgrupos: copiar solo los subgrupos marcados como destacados
-        # en la BD origen para este (codigo, grupo_num). Esto evita que se
-        # copien todos los subgrupos de prácticas cuando el usuario solo marcó uno.
-        if grupo_num_str:
-            starred_rows = src_conn.execute(
-                "SELECT DISTINCT subgrupo FROM asignaturas_destacadas "
-                "WHERE codigo = ? AND grupo_num = ?",
-                (codigo, grupo_num_str)
-            ).fetchall()
-            starred_subgrupos = {r[0] for r in starred_rows}
-            if starred_subgrupos:
-                # c[3] = subgrupo en el SELECT anterior
-                clases = [c for c in clases if c[3] in starred_subgrupos]
+        # Filtrar por (act_type, subgrupo) marcado con ⭐ en la BD origen.
+        # Política: las asignaturas sin ninguna ⭐ NO se copian. Las que tienen
+        # marcas, solo conservan las clases cuya pareja (act_type, subgrupo)
+        # esté presente — incluyendo el caso 'todos' para LAB/INF compartido.
+        # Réplica del helper en sync_dtie.py.
+        _src_tipo_to_af = _src_tipo_to_af_by_idx[fidx]
+        _clave_row = src_conn.execute(
+            "SELECT clave FROM grupos WHERE id = ?", (src_grupo_id,)
+        ).fetchone()
+        _src_grupo_num = _clave_row[0].split('_grupo_')[-1] if _clave_row else ''
+        _marcas = _load_marcas_destacadas(src_conn, codigo, _src_grupo_num)
+        if not _marcas:
+            log(f'  ⚠️ {codigo}: sin ⭐ en grupo {_src_grupo_num} de fuente '
+                f'{d["fuente"].upper()}, no se copian clases', 'warn')
+            clases = []
+        else:
+            # c[3]=subgrupo, c[8]=tipo, c[9]=af_cat
+            clases = [
+                c for c in clases
+                if _clase_pasa_filtro(c[8], c[9], c[3], _marcas, _src_tipo_to_af)
+            ]
 
         # Insertar clases en CADA grupo DTIE del (curso, cuat)
+        # clases tiene 10 columnas (c.tipo y c.af_cat añadidas para el filtro);
+        # aquí solo necesitamos las 8 primeras para insertar.
         n_copied = 0
         for dtie_grupo_id in dtie_grupo_ids:
-            for dia, src_franja_id, aula, subgrupo, observacion, es_no_lectivo, contenido, sem_num in clases:
+            for _row in clases:
+                dia, src_franja_id, aula, subgrupo, observacion, es_no_lectivo, contenido, sem_num = _row[:8]
                 dtie_semana_id = semana_map.get((dtie_grupo_id, sem_num))
                 if dtie_semana_id is None:
                     continue

@@ -39,6 +39,7 @@ select:focus,input:focus{border-color:var(--primary-light)}
 .schedule-table th,.schedule-table td{border:1px solid var(--border)}
 .sch-th-time{background:var(--primary-light);color:#fff;padding:12px 10px;text-align:center;font-size:.82rem;font-weight:700;text-transform:uppercase;width:110px}
 .sch-th-day{background:var(--primary);color:#fff;padding:12px 10px;text-align:center;font-size:.82rem;font-weight:700;text-transform:uppercase}
+.sch-th-daynum{display:inline-block;margin-left:.35em;padding:1px 5px;border-radius:6px;background:rgba(255,255,255,.18);font-weight:600;font-size:.74rem;letter-spacing:0;text-transform:none;vertical-align:middle}
 .sch-time-cell{padding:10px 8px;text-align:center;font-size:.78rem;font-weight:700;color:#fff;background:var(--primary);width:110px}
 .sch-cell{padding:6px 8px;min-height:70px;cursor:pointer;transition:background .15s;vertical-align:middle}
 .sch-cell:hover{background:#e8f0fc}

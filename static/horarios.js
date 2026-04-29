@@ -583,6 +583,46 @@ async function toggleDtie(codigo, grupo_num, act_type, subgrupo) {
   }
 }
 
+/**
+ * Calcula la fecha (formato D/M) correspondiente a cada día de la semana
+ * a partir de week.descripcion (formato esperado: "SEMANA N: D MES A D MES").
+ * Usa CURSO_STR para deducir el año (mes >= 7 → primer año del curso, si no → segundo).
+ * Si la descripción no encaja con el patrón, devuelve {} (degradación silenciosa).
+ *
+ * Ejemplo: "SEMANA 5: 5 OCTUBRE A 9 OCTUBRE" →
+ *   { LUNES:'5/10', MARTES:'6/10', MIÉRCOLES:'7/10', JUEVES:'8/10', VIERNES:'9/10', SÁBADO:'10/10' }
+ */
+function getWeekDayDates(week) {
+  const MESES = {
+    'ENERO':1,'FEBRERO':2,'MARZO':3,'ABRIL':4,'MAYO':5,'JUNIO':6,
+    'JULIO':7,'AGOSTO':8,'SEPTIEMBRE':9,'OCTUBRE':10,'NOVIEMBRE':11,'DICIEMBRE':12
+  };
+  const DIAS_ORDEN = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+  const out = {};
+  if (!week || !week.descripcion) return out;
+  const m = week.descripcion.match(/(\d+)\s+([A-ZÁÉÍÓÚÑ]+)\s+A\s+(\d+)\s+([A-ZÁÉÍÓÚÑ]+)/i);
+  if (!m) return out;
+  const startDay   = parseInt(m[1], 10);
+  const startMonth = MESES[m[2].toUpperCase()];
+  if (!startMonth) return out;
+  // Año del curso: mes >= 7 → primer año (sept-dic); si no → segundo año (ene-jun)
+  let yearStart = 2026, yearEnd = 2027;
+  if (typeof CURSO_STR === 'string') {
+    const parts = CURSO_STR.split('-');
+    const a = parseInt(parts[0], 10), b = parseInt(parts[1], 10);
+    if (!isNaN(a) && !isNaN(b)) { yearStart = a; yearEnd = b; }
+  }
+  const year = startMonth >= 7 ? yearStart : yearEnd;
+  const start = new Date(year, startMonth - 1, startDay);
+  if (isNaN(start.getTime())) return out;
+  for (let i = 0; i < DIAS_ORDEN.length; i++) {
+    const d = new Date(start.getTime());
+    d.setDate(d.getDate() + i);
+    out[DIAS_ORDEN[i]] = `${d.getDate()}/${d.getMonth() + 1}`;
+  }
+  return out;
+}
+
 function buildWeekTableHTML(week, interactive) {
   const franjas = DB.franjas;
   // applyToggle=interactive: el toggle solo actúa en la vista en vivo, no en PDFs ni "todas"
@@ -601,9 +641,11 @@ function buildWeekTableHTML(week, interactive) {
     noLectivoDays[day] = dc.some(c => c.es_no_lectivo);
   });
   const noLecRendered = {};
+  // Fechas D/M por día, derivadas de week.descripcion. {} si no se puede parsear.
+  const dayDates = getWeekDayDates(week);
   let html = `<table class="schedule-table"><thead><tr>
     <th class="sch-th-time">Franja</th>
-    ${days.map(d => `<th class="sch-th-day${d==='SÁBADO'?' sab':''}">${d}</th>`).join('')}
+    ${days.map(d => `<th class="sch-th-day${d==='SÁBADO'?' sab':''}">${d}${dayDates[d]?` <span class="sch-th-daynum">${dayDates[d]}</span>`:''}</th>`).join('')}
   </tr></thead><tbody>`;
   franjas.forEach(f => {
     if (f.orden === 4) {
