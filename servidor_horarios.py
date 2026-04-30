@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.37.3"
+APP_VERSION = "1.37.6"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -345,12 +345,22 @@ def api_update_clase(data):
     Si se pasa 'conjunto_id' en data, se asigna ese valor a la clase ('' → NULL).
     Tras guardar, propaga los campos de contenido a todas las clases vinculadas
     (mismo conjunto_id), pero NO modifica su posición (dia/franja/semana).
+
+    Si la clase pasa de es_no_lectivo=1 a es_no_lectivo=0, sincroniza automáticamente
+    festivos_calendario (elimina la entrada) y limpia los placeholders no-lectivos del
+    resto de grupos para ese mismo día.
     """
     conn = get_db()
     clase_id = data.get("id")
     if not clase_id:
         conn.close()
         return {"error": "ID de clase requerido"}
+
+    # Leer estado previo ANTES del UPDATE para detectar transición 1→0
+    old_row = conn.execute(
+        "SELECT es_no_lectivo, semana_id, dia FROM clases WHERE id=?", (clase_id,)
+    ).fetchone()
+    old_es_no_lectivo = old_row["es_no_lectivo"] if old_row else 0
 
     asignatura_id = resolve_asignatura(conn, data)
     af_cat = data.get("af_cat") or None
@@ -402,6 +412,49 @@ def api_update_clase(data):
                 WHERE id=?
             """, content_vals + (lc["id"],))
             linked_updated += 1
+
+    # ── Sincronizar festivos_calendario si la clase deja de ser no-lectiva ────
+    new_es_no_lectivo = 1 if data.get("es_no_lectivo") else 0
+    if old_es_no_lectivo == 1 and new_es_no_lectivo == 0 and old_row:
+        semana_id_cls = old_row["semana_id"]
+        dia_cls       = old_row["dia"]
+
+        # Obtener cuatrimestre y número de semana para localizar la fecha
+        sem_row = conn.execute("""
+            SELECT s.numero, g.cuatrimestre
+            FROM semanas s JOIN grupos g ON s.grupo_id = g.id
+            WHERE s.id = ?
+        """, (semana_id_cls,)).fetchone()
+
+        if sem_row:
+            numero_cls  = sem_row["numero"]
+            cuat_cls    = sem_row["cuatrimestre"]
+
+            # Buscar la fecha ISO que corresponde a este (cuatrimestre, semana, día)
+            date_mapping = _parse_semana_date_ranges(conn)
+            fecha_cls = next(
+                (d for d, slot in date_mapping.items()
+                 if slot["cuatrimestre"] == cuat_cls
+                 and slot["numero"] == numero_cls
+                 and slot["dia"] == dia_cls),
+                None
+            )
+
+            # Eliminar de festivos_calendario (el calendario académico dejará de marcarlo)
+            if fecha_cls:
+                conn.execute("DELETE FROM festivos_calendario WHERE fecha=?", (fecha_cls,))
+
+            # Limpiar placeholders es_no_lectivo=1 en los demás grupos para ese día
+            # (la clase recién editada, id=clase_id, ya tiene es_no_lectivo=0; no tocarla)
+            conn.execute("""
+                DELETE FROM clases
+                WHERE id != ? AND es_no_lectivo = 1 AND dia = ?
+                  AND semana_id IN (
+                      SELECT s.id FROM semanas s
+                      JOIN grupos g ON s.grupo_id = g.id
+                      WHERE g.cuatrimestre = ? AND s.numero = ?
+                  )
+            """, (clase_id, dia_cls, cuat_cls, numero_cls))
 
     conn.commit()
     conn.close()
@@ -772,9 +825,35 @@ def api_get_festivos(params):
     return [dict(r) for r in rows]
 
 
+def _get_config_festivos_set():
+    """Devuelve el conjunto de fechas (strings YYYY-MM-DD) definidas como festivos
+    o no-lectivos en config.json (calendario.1C.festivos, .2C.festivos y
+    periodos_examenes.*.festivos). Usado para detectar si un día que se quiere
+    eliminar de festivos_calendario sigue presente en la configuración del grado."""
+    fechas = set()
+    cal = _cfg("calendario") or {}
+    for cuat in ("1C", "2C"):
+        for entry in (cal.get(cuat) or {}).get("festivos") or []:
+            f = entry.get("fecha") if isinstance(entry, dict) else entry
+            if f:
+                fechas.add(str(f).strip())
+    for periodo in ((cal.get("periodos_examenes") or {}).values()):
+        for entry in (periodo.get("festivos") or []):
+            f = entry.get("fecha") if isinstance(entry, dict) else entry
+            if f:
+                fechas.add(str(f).strip())
+    return fechas
+
+
 def api_set_festivo(data):
     """POST /api/festivos/set — añade, modifica o elimina un día festivo/no-lectivo
-    y propaga el cambio a es_no_lectivo en todas las clases correspondientes."""
+    y propaga el cambio a es_no_lectivo en todas las clases correspondientes.
+
+    Caso especial 'delete': si la fecha también está definida en config.json, en lugar
+    de borrar la fila se inserta un marcador tipo='lectivo_override'. Esto permite que
+    el frontend sepa que el usuario ha forzado el día como lectivo aunque config.json
+    lo siga listando como festivo o no-lectivo.
+    """
     conn = get_db()
     fecha       = (data.get('fecha')       or '').strip()
     tipo        = (data.get('tipo')        or 'no_lectivo').strip()
@@ -789,7 +868,17 @@ def api_set_festivo(data):
     slot    = mapping.get(fecha)
 
     if action == 'delete':
-        conn.execute("DELETE FROM festivos_calendario WHERE fecha=?", (fecha,))
+        config_fechas = _get_config_festivos_set()
+        if fecha in config_fechas:
+            # El día está en config.json: no borramos la fila sino que marcamos
+            # 'lectivo_override' para que el frontend lo trate como día lectivo
+            # a pesar de que configFestivosMap lo siga listando como festivo.
+            conn.execute(
+                "INSERT OR REPLACE INTO festivos_calendario (fecha, tipo, descripcion) VALUES (?,?,?)",
+                (fecha, 'lectivo_override', '')
+            )
+        else:
+            conn.execute("DELETE FROM festivos_calendario WHERE fecha=?", (fecha,))
         if slot:
             _set_no_lectivo_clases(conn, slot['cuatrimestre'], slot['numero'],
                                    slot['dia'], 0)

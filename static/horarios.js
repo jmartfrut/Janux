@@ -4655,8 +4655,9 @@ function showToast(msg, isError = false) {
 }
 
 // ─── FESTIVOS CALENDAR ───
-let FESTIVOS_MAP = {};   // fecha -> {tipo, descripcion}
-let CAL_SEMANA_MAP = {}; // fecha -> {cuatrimestre, numero, dia}  (built from DB.grupos)
+let FESTIVOS_MAP = {};        // fecha -> {tipo, descripcion}  — cargado desde /api/festivos
+let CAL_SEMANA_MAP = {};      // fecha -> {cuatrimestre, numero, dia}  (built from DB.grupos)
+let configFestivosMap = {};   // fecha -> {tipo, descripcion}  — festivos de config.json (global para openFestivoPopup)
 
 /* Devuelve la fecha local como YYYY-MM-DD (evita desfase UTC de toISOString) */
 function isoLocal(d) {
@@ -4752,8 +4753,9 @@ function renderCalendar() {
   } catch(e) { /* getFinalesPeriods puede no estar disponible todavía */ }
 
   /* Festivos definidos en config.json — fuente complementaria a FESTIVOS_MAP.
-     Lee TODAS las secciones: calendario.1C, calendario.2C y periodos_examenes.* */
-  const configFestivosMap = {};
+     Lee TODAS las secciones: calendario.1C, calendario.2C y periodos_examenes.
+     Se escribe en la variable global para que openFestivoPopup pueda acceder a ella. */
+  configFestivosMap = {};
   function _addConfigFestivos(list) {
     for (const f of (list || [])) {
       const fecha = (typeof f === 'string') ? f : f.fecha;
@@ -4807,8 +4809,14 @@ function renderCalendar() {
       const isWeekend = (wd === 0 || wd === 6);
       const inSemana  = !!CAL_SEMANA_MAP[iso];
       const inExamen  = examenDatesSet.has(iso);
-      // Festivo: primero BD (FESTIVOS_MAP), luego config.json (configFestivosMap)
-      const festivo   = FESTIVOS_MAP[iso] || configFestivosMap[iso] || null;
+      // Festivo: la BD (FESTIVOS_MAP) tiene prioridad absoluta.
+      //   tipo='lectivo_override' → usuario forzó este día como lectivo aunque
+      //   config.json lo liste como festivo; se trata como null (día lectivo normal).
+      //   Cualquier otro tipo en BD → festivo/no-lectivo real.
+      //   No en BD → fallback a config.json (configFestivosMap).
+      const bdFestivo  = FESTIVOS_MAP[iso] || null;
+      const isOverride = bdFestivo && bdFestivo.tipo === 'lectivo_override';
+      const festivo    = isOverride ? null : (bdFestivo || configFestivosMap[iso] || null);
 
       let cls = 'cal-day ';
       let tooltip = '';
@@ -4852,14 +4860,19 @@ function renderCalendar() {
   const listContainer = document.getElementById('calendarFestivosList');
   if (!listContainer) return;
 
-  // Unir ambas fuentes; la BD tiene prioridad sobre config
+  // Unir ambas fuentes; la BD tiene prioridad sobre config.
+  // Se excluyen los marcadores 'lectivo_override' (el día es lectivo, no debe aparecer en la lista).
   const allFestivos = {};
   for (const [fecha, info] of Object.entries(configFestivosMap)) allFestivos[fecha] = info;
   for (const [fecha, info] of Object.entries(FESTIVOS_MAP || {}))  allFestivos[fecha] = info;
 
-  // Excluir domingos (no son días lectivos ni de examen, no deben aparecer en la lista)
+  // Excluir domingos y días con lectivo_override
   const entries = Object.entries(allFestivos)
-    .filter(([fecha]) => { const [y,m,d] = fecha.split('-').map(Number); return new Date(y, m-1, d).getDay() !== 0; })
+    .filter(([fecha, info]) => {
+      if (info.tipo === 'lectivo_override') return false;
+      const [y,m,d] = fecha.split('-').map(Number);
+      return new Date(y, m-1, d).getDay() !== 0;
+    })
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (!entries.length) { listContainer.innerHTML = ''; return; }
@@ -4905,21 +4918,47 @@ function openFestivoPopup(fecha, evt) {
   const popup = document.createElement('div');
   popup.id = 'festivoPopup';
   popup.className = 'festivo-popup';
-  const isMarcado = !!existing.tipo;
-  popup.innerHTML = `
-    <h4>&#128197; ${label}</h4>
-    <label>Tipo de día</label>
-    <select id="fpTipo">
-      <option value="no_lectivo" ${existing.tipo==='no_lectivo'?'selected':''}>🟠 No lectivo / Puente</option>
-      <option value="festivo" ${existing.tipo==='festivo'?'selected':''}>🔴 Festivo nacional</option>
-    </select>
-    <label>Descripción (opcional)</label>
-    <input type="text" id="fpDesc" value="${existing.descripcion||''}" placeholder="Ej: Día de la Hispanidad">
-    <div class="popup-btns">
-      ${isMarcado?`<button class="btn btn-danger btn-sm" onclick="saveFestivo('${fecha}','delete')">🗑 Quitar</button>`:''}
-      <button class="btn btn-outline btn-sm" onclick="closeFestivoPopup()">Cancelar</button>
-      <button class="btn btn-primary btn-sm" onclick="saveFestivo('${fecha}','set')">✔ Guardar</button>
-    </div>`;
+
+  // Caso especial: día marcado como lectivo_override (festivo de config.json forzado a lectivo)
+  const isOverride = existing.tipo === 'lectivo_override';
+  const configInfo = configFestivosMap ? (configFestivosMap[fecha] || null) : null;
+
+  if (isOverride) {
+    // El día está forzado como lectivo; mostrar opción de restaurarlo como festivo/no-lectivo
+    const configDesc = configInfo ? (configInfo.descripcion || '') : '';
+    popup.innerHTML = `
+      <h4>&#128197; ${label}</h4>
+      <div style="font-size:.82rem;color:#166534;background:#e8f4ea;border-radius:6px;padding:8px 10px;margin-bottom:10px;">
+        ✅ Día marcado como <strong>lectivo</strong> (override de configuración${configDesc ? `: "${configDesc}"` : ''})
+      </div>
+      <label>Restaurar como no lectivo</label>
+      <select id="fpTipo">
+        <option value="no_lectivo">🟠 No lectivo / Puente</option>
+        <option value="festivo">🔴 Festivo nacional</option>
+      </select>
+      <label>Descripción (opcional)</label>
+      <input type="text" id="fpDesc" value="${configDesc}" placeholder="Ej: Día de la Hispanidad">
+      <div class="popup-btns">
+        <button class="btn btn-outline btn-sm" onclick="closeFestivoPopup()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="saveFestivo('${fecha}','set')">↩ Restaurar como festivo</button>
+      </div>`;
+  } else {
+    const isMarcado = !!existing.tipo;
+    popup.innerHTML = `
+      <h4>&#128197; ${label}</h4>
+      <label>Tipo de día</label>
+      <select id="fpTipo">
+        <option value="no_lectivo" ${existing.tipo==='no_lectivo'?'selected':''}>🟠 No lectivo / Puente</option>
+        <option value="festivo" ${existing.tipo==='festivo'?'selected':''}>🔴 Festivo nacional</option>
+      </select>
+      <label>Descripción (opcional)</label>
+      <input type="text" id="fpDesc" value="${existing.descripcion||''}" placeholder="Ej: Día de la Hispanidad">
+      <div class="popup-btns">
+        ${isMarcado?`<button class="btn btn-danger btn-sm" onclick="saveFestivo('${fecha}','delete')">🗑 Quitar</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="closeFestivoPopup()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="saveFestivo('${fecha}','set')">✔ Guardar</button>
+      </div>`;
+  }
 
   /* Position near click */
   const x = Math.min(evt.clientX, window.innerWidth - 360);
@@ -4947,7 +4986,10 @@ async function saveFestivo(fecha, action) {
   DB._overrideSet = new Set(DB.fichas_override || []);
   _subjectColorCache = null;
   await loadFestivos();
-  showToast(action === 'delete' ? 'Día eliminado del calendario ✔' : 'Día guardado en todos los horarios ✔');
+  const toastMsg = action === 'delete'
+    ? 'Día marcado como lectivo ✔'
+    : 'Día guardado en todos los horarios ✔';
+  showToast(toastMsg);
 }
 
 // ─── EXPORTAR CALENDARIO PDF ─────────────────────────────────────────────────
@@ -5026,10 +5068,12 @@ async function exportCalendarioPDF() {
       domingo:        [210, 215, 220],
     };
 
-    // Misma lógica de clasificación que renderCalendar()
+    // Misma lógica de clasificación que renderCalendar() (respeta lectivo_override)
     function getDayClass(iso, wd) {
       if (wd === 0) return 'domingo';
-      const festivo = (FESTIVOS_MAP || {})[iso] || configFestivosMap[iso] || null;
+      const bdFestivo  = (FESTIVOS_MAP || {})[iso] || null;
+      const isOverride = bdFestivo && bdFestivo.tipo === 'lectivo_override';
+      const festivo    = isOverride ? null : (bdFestivo || configFestivosMap[iso] || null);
       if (festivo) return festivo.tipo || 'no_lectivo';
       if (examenDatesSet.has(iso)) return 'periodo_examen';
       if (wd === 6) return 'finde';
@@ -5171,9 +5215,10 @@ async function exportCalendarioPDF() {
     pdf.setTextColor(255, 255, 255);
     pdf.text(`Días no lectivos y festivos — ${degreeLabel}  ·  ${CURSO_STR || ''}`, M + 3, 12.7);
 
-    // Filtrar y ordenar festivos (excluir domingos)
+    // Filtrar y ordenar festivos (excluir domingos y días con lectivo_override)
     const entries = Object.entries(allFestivos)
-      .filter(([fecha]) => {
+      .filter(([fecha, info]) => {
+        if (info.tipo === 'lectivo_override') return false;
         const [fy, fm, fd] = fecha.split('-').map(Number);
         return new Date(fy, fm - 1, fd).getDay() !== 0;
       })
