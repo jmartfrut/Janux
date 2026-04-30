@@ -137,7 +137,14 @@ def _expand_subgrupos(sg):
 
 
 def _load_marcas_destacadas(src_conn, codigo, grupo_num):
-    """Devuelve dict[act_type] -> set(subgrupo) leído de asignaturas_destacadas."""
+    """Devuelve dict[act_type] -> set(subgrupo) leído de asignaturas_destacadas.
+
+    Busca primero por (codigo, grupo_num). Si no hay resultado — porque las
+    marcas se guardaron desde un grupo distinto al indicado en grupo_origen del
+    CSV — hace fallback a cualquier grupo del mismo código. Esto evita que un
+    desfase entre el grupo donde se puso la ⭐ y el grupo fuente del CSV deje
+    la asignatura sin clases en el DTIE.
+    """
     if not table_exists(src_conn, 'asignaturas_destacadas'):
         return {}
     rows = src_conn.execute(
@@ -145,6 +152,13 @@ def _load_marcas_destacadas(src_conn, codigo, grupo_num):
         "WHERE codigo = ? AND grupo_num = ?",
         (codigo, grupo_num)
     ).fetchall()
+    if not rows:
+        # Fallback: usar marcas de cualquier grupo del mismo código
+        rows = src_conn.execute(
+            "SELECT act_type, subgrupo FROM asignaturas_destacadas "
+            "WHERE codigo = ?",
+            (codigo,)
+        ).fetchall()
     marcas = {}
     for act, sg in rows:
         marcas.setdefault(act or '', set()).add(sg or '')

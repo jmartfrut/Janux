@@ -990,6 +990,9 @@ async function _resolverCSV(payload) {
   if (res.schedules?.a && fuenteData.a) Object.assign(fuenteData.a.schedules, res.schedules.a);
   if (res.schedules?.b && fuenteData.b) Object.assign(fuenteData.b.schedules, res.schedules.b);
   _csvData = res.rows;
+  // Limpiar tabla antes de reconstruir para que los valores del CSV
+  // no sean sobreescritos por los cursos previos (sin CSV) del tbody.
+  document.getElementById('dist-tbody').innerHTML = '';
   buildDistTable();
   const nOk  = res.rows.filter(r => r.found !== false).length;
   const nErr = res.rows.filter(r => r.found === false).length;
@@ -1185,7 +1188,9 @@ def _expand_subgrupos(sg):
 def _load_marcas_destacadas(src_conn, codigo, grupo_num):
     """Lee asignaturas_destacadas y devuelve dict[act_type] -> set(subgrupo).
 
-    Devuelve {} si la tabla no existe o si no hay marcas para (codigo, grupo_num).
+    Busca primero por (codigo, grupo_num). Si no hay resultado — porque las
+    marcas se guardaron viendo un grupo distinto al grupo fuente — hace fallback
+    a cualquier grupo del mismo código. Devuelve {} si la tabla no existe.
     """
     has_table = bool(src_conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='asignaturas_destacadas'"
@@ -1197,6 +1202,12 @@ def _load_marcas_destacadas(src_conn, codigo, grupo_num):
         "WHERE codigo = ? AND grupo_num = ?",
         (codigo, grupo_num)
     ).fetchall()
+    if not rows:
+        rows = src_conn.execute(
+            "SELECT act_type, subgrupo FROM asignaturas_destacadas "
+            "WHERE codigo = ?",
+            (codigo,)
+        ).fetchall()
     marcas = {}
     for act, sg in rows:
         marcas.setdefault(act or '', set()).add(sg or '')
@@ -1837,13 +1848,15 @@ def generar_dtie_db(dtie_conn, src_conns, distribucion, estructura, log):
                 if _clase_pasa_filtro(c[8], c[9], c[3], _marcas, _src_tipo_to_af)
             ]
 
-        # Insertar clases en CADA grupo DTIE del (curso, cuat)
-        # clases tiene 10 columnas (c.tipo y c.af_cat añadidas para el filtro);
-        # aquí solo necesitamos las 8 primeras para insertar.
+        # Insertar clases en CADA grupo DTIE del (curso, cuat).
+        # clases tiene 10 columnas: 8 base + c.tipo (col 8) + c.af_cat (col 9).
+        # Se copian todos los campos para reproducir fielmente la clase origen.
         n_copied = 0
         for dtie_grupo_id in dtie_grupo_ids:
             for _row in clases:
                 dia, src_franja_id, aula, subgrupo, observacion, es_no_lectivo, contenido, sem_num = _row[:8]
+                clase_tipo   = _row[8] if len(_row) > 8 else ''
+                clase_af_cat = _row[9] if len(_row) > 9 else None
                 dtie_semana_id = semana_map.get((dtie_grupo_id, sem_num))
                 if dtie_semana_id is None:
                     continue
@@ -1869,11 +1882,12 @@ def generar_dtie_db(dtie_conn, src_conns, distribucion, estructura, log):
                 dtie_conn.execute("""
                     INSERT INTO clases
                         (semana_id, dia, franja_id, asignatura_id, aula, subgrupo,
-                         observacion, es_no_lectivo, contenido)
-                    VALUES (?,?,?,?,?,?,?,?,?)
+                         observacion, es_no_lectivo, contenido, tipo, af_cat)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """, (dtie_semana_id, dia, new_franja_id, new_asig_id,
                       aula or '', subgrupo or '', observacion or '',
-                      es_no_lectivo or 0, contenido or ''))
+                      es_no_lectivo or 0, contenido or '',
+                      clase_tipo or '', clase_af_cat))
                 n_copied += 1
 
         total_clases += n_copied
@@ -1985,6 +1999,13 @@ def _api_resolver_csv_dtie_impl(data):
     _CUAT_MAP = {'C1': '1C', 'C2': '2C', 'c1': '1C', 'c2': '2C',
                  '1C': '1C', '2C': '2C'}
 
+    # Precargar tipo_to_af por fuente (necesario para filtrar por ⭐ en schedules)
+    tipo_to_af_map = {}
+    for key, f in zip(['a', 'b'], fuentes):
+        db_path_str_ta = f.get('db_path', '')
+        if db_path_str_ta:
+            tipo_to_af_map[key] = _load_tipo_to_af(resolve_db_path(db_path_str_ta))
+
     rows_out  = []
     schedules = {'a': {}, 'b': {}}
     warnings  = []
@@ -2082,18 +2103,32 @@ def _api_resolver_csv_dtie_impl(data):
                 if curso_origen is None: curso_origen = g[1]
                 if cuat_origen  is None: cuat_origen  = g[2]
 
-        # Schedule comprimido para conflict detection
+        # Schedule comprimido para conflict detection — solo slots ⭐
+        # Mismo criterio que api_leer_dtie: filtrar por _clase_pasa_filtro para
+        # que los subgrupos NO marcados con ⭐ no generen falsos conflictos.
         sched = []
         if grupo_id:
+            _clave_row_csv = conn.execute(
+                "SELECT clave FROM grupos WHERE id = ?", (grupo_id,)
+            ).fetchone()
+            _grupo_num_csv = _clave_row_csv[0].split('_grupo_')[-1] if _clave_row_csv else ''
+            _tipo_to_af_csv = tipo_to_af_map.get(fuente, {})
+            _marcas_csv = _load_marcas_destacadas(conn, codigo, _grupo_num_csv)
             clases = conn.execute("""
-                SELECT s.numero AS sem, c.dia, c.franja_id AS fr, f.label AS fl
+                SELECT s.numero AS sem, c.dia, c.franja_id AS fr, f.label AS fl,
+                       c.tipo, c.af_cat, c.subgrupo
                 FROM clases c
                 JOIN semanas s ON s.id = c.semana_id
                 JOIN asignaturas a ON a.id = c.asignatura_id
                 JOIN franjas f ON f.id = c.franja_id
                 WHERE s.grupo_id = ? AND a.codigo = ? AND c.es_no_lectivo = 0
             """, (grupo_id, codigo)).fetchall()
-            sched = [{'sem': r['sem'], 'dia': r['dia'], 'fr': r['fr'], 'fl': r['fl']} for r in clases]
+            sched = [
+                {'sem': r['sem'], 'dia': r['dia'], 'fr': r['fr'], 'fl': r['fl']}
+                for r in clases
+                if _clase_pasa_filtro(r['tipo'], r['af_cat'], r['subgrupo'],
+                                      _marcas_csv, _tipo_to_af_csv)
+            ]
         schedules[fuente][codigo] = sched
 
         rows_out.append({

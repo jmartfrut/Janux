@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.37.0"
+APP_VERSION = "1.37.3"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1446,7 +1446,7 @@ def api_reload_fichas(_data):
 
             cuat_raw = (row.get("cuatrimestre") or "").strip().upper()
             cuat = cuat_raw if cuat_raw in ("1C", "2C", "A") else None
-            curso_raw = (row.get("curso") or "").strip()
+            curso_raw = (row.get("curso") or row.get("curso_dtie") or "").strip()
             try:
                 curso_val = int(curso_raw) if curso_raw else None
             except (ValueError, TypeError):
