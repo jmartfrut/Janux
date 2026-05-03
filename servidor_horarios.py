@@ -1672,10 +1672,11 @@ def api_dtie_sync(_data):
     try:
         result = _sp.run(
             cmd,
-            capture_output=True, text=True, timeout=180, cwd=SCRIPT_DIR
+            capture_output=True, text=True, encoding='utf-8', errors='replace',
+            timeout=180, cwd=SCRIPT_DIR
         )
-        output = result.stdout
-        if result.stderr.strip():
+        output = result.stdout or ""
+        if result.stderr and result.stderr.strip():
             output += "\n--- stderr ---\n" + result.stderr
         ok = result.returncode == 0
         return {"ok": ok, "output": output, "lines": output.splitlines()}
