@@ -330,6 +330,24 @@ def sync_clases(csv_rows, src_conns_by_siglas, dtie_conn, dry_run=False):
     # Columnas disponibles en la tabla clases del DTIE
     dtie_clases_cols = get_table_columns(dtie_conn, 'clases')
 
+    # Mapa rápido codigo → {nombre, curso_dtie, cuatrimestre} para enriquecer conflictos
+    asig_info_map = {
+        row['codigo'].strip(): {
+            'nombre':       row['nombre'].strip(),
+            'curso_dtie':   int(row['curso_dtie']),
+            'cuatrimestre': row['cuatrimestre'].strip(),
+        }
+        for row in csv_rows
+    }
+
+    # Mapa franja_id → label (ej. "9:00 - 10:50") para mensajes legibles
+    franja_label_map = {
+        fid: (label or f"franja {orden}")
+        for fid, label, orden in dtie_conn.execute(
+            "SELECT id, label, orden FROM franjas"
+        ).fetchall()
+    }
+
     total_copiadas = 0
     total_borradas = 0
     conflictos     = []
@@ -484,9 +502,20 @@ def sync_clases(csv_rows, src_conns_by_siglas, dtie_conn, dry_run=False):
                         for c in conflictos
                     }
                     if conf_key not in known:
+                        info1 = asig_info_map.get(prev, {})
+                        info2 = asig_info_map.get(codigo, {})
                         conflictos.append({
-                            'asig1': prev, 'asig2': codigo,
-                            'semana': sem_num, 'dia': dia, 'franja': new_franja_id,
+                            'asig1':       prev,
+                            'asig2':       codigo,
+                            'nombre1':     info1.get('nombre', prev),
+                            'nombre2':     info2.get('nombre', codigo),
+                            'curso':       info2.get('curso_dtie', '?'),
+                            'cuatrimestre': info2.get('cuatrimestre', '?'),
+                            'semana':      sem_num,
+                            'dia':         dia,
+                            'franja':      new_franja_id,
+                            'franja_label': franja_label_map.get(new_franja_id,
+                                                                  f"franja {new_franja_id}"),
                         })
                 else:
                     slot_map[slot_key] = codigo
@@ -527,8 +556,13 @@ def sync_clases(csv_rows, src_conns_by_siglas, dtie_conn, dry_run=False):
     if conflictos:
         log(f"{len(conflictos)} conflicto(s) de slot detectados:", 'warn')
         for c in conflictos:
-            log(f"  Semana {c['semana']} · {c['dia']} · franja {c['franja']}: "
-                f"{c['asig1']} ↔ {c['asig2']}", 'warn')
+            log(
+                f"  Curso {c['curso']} {c['cuatrimestre']} · "
+                f"Sem {c['semana']} · {c['dia']} · {c['franja_label']}\n"
+                f"    {c['asig1']} {c['nombre1']}\n"
+                f"    {c['asig2']} {c['nombre2']}",
+                'warn'
+            )
 
     return conflictos
 
