@@ -1,4 +1,4 @@
-# Gestor de Horarios UPCT — dependencias Python
+# Gestor de Horarios UPCT — dependencias Python 
 # Instalar con: pip install -r requirements.txt
 
 # Lectura de ficheros Excel (rebuild_db.py, exportar_excel.py)
