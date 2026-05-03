@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 #   MAJOR → cambios de arquitectura o rotura de compatibilidad
 #   MINOR → funcionalidades nuevas (vistas, endpoints, herramientas)
 #   PATCH → correcciones y mejoras menores
-APP_VERSION = "1.37.6"
+APP_VERSION = "1.37.7"
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
 # Carga config.json si existe; si no, usa valores por defecto (compatibilidad)
@@ -1664,10 +1664,14 @@ def api_dtie_sync(_data):
     sync_script = os.path.join(SCRIPT_DIR, "tools", "sync_dtie.py")
 
     # Usar siempre la ruta del directorio del grado (relativa a SCRIPT_DIR)
-    # sync_dtie.py acepta una ruta relativa desde la raíz del proyecto.
+    # y la BD real sobre la que trabaja el servidor (puede ser /tmp/ cuando el
+    # launcher ha copiado la BD ahí). Sin --db, sync_dtie.py escribe en el
+    # fichero Dropbox original mientras el servidor sirve desde /tmp, con lo que
+    # los cambios no se ven y se pierden al cerrar el servidor (cp /tmp → Dropbox).
+    cmd = [sys.executable, sync_script, GRADO_DIR_REL, '--db', DB_PATH]
     try:
         result = _sp.run(
-            [sys.executable, sync_script, GRADO_DIR_REL],
+            cmd,
             capture_output=True, text=True, timeout=180, cwd=SCRIPT_DIR
         )
         output = result.stdout
