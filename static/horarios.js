@@ -630,6 +630,7 @@ function buildSubjectCard(cls, color, search, interactive) {
       ${cls.aula?`<span class="tag">&#127979; ${cls.aula}</span>`:''}
       ${cls.subgrupo?`<span class="tag">&#128101; Sg.${cls.subgrupo}</span>`:''}
     </div>
+    ${!parcial && cls.observacion ? `<div style="margin-top:3px"><span class="tag obs-tag">&#128203; ${cls.observacion}</span></div>` : ''}
   </div>`;
 }
 
